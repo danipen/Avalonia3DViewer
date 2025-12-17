@@ -21,16 +21,6 @@ obj/
 
 # User assets
 Assets/
-*.hdr
-*.exr
-*.obj
-*.fbx
-*.gltf
-*.glb
-*.dae
-*.3ds
-*.blend
-*.stl
 
 # Logs
 *.log
