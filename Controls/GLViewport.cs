@@ -197,8 +197,6 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         base.OnAttachedToVisualTree(e);
         // Request focus when attached to ensure pointer events work
         Focus();
-        
-
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
