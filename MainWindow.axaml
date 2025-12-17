@@ -1,0 +1,371 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:Avalonia3DViewer.Controls"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+        x:Class="Avalonia3DViewer.MainWindow"
+        Title="Avalonia 3D Viewer - PBR + IBL"
+        Width="1280" Height="720"
+        Background="#1E1E1E">
+    
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="300"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- 3D Viewport -->
+        <Grid Grid.Column="0">
+            <controls:GLViewport x:Name="Viewport"/>
+            
+            <!-- Loading Overlay -->
+            <Border x:Name="LoadingOverlay" 
+                    Background="#80000000" 
+                    IsVisible="False"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch">
+                <StackPanel HorizontalAlignment="Center" 
+                            VerticalAlignment="Center"
+                            Spacing="12">
+                    <ProgressBar x:Name="LoadingProgressBar" 
+                                 IsIndeterminate="True"
+                                 Width="200"/>
+                    <TextBlock x:Name="LoadingText" 
+                               Text="Loading..."
+                               Foreground="White"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Control Panel -->
+        <Border Grid.Column="1" Background="#2D2D2D" Padding="16">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Avalonia 3D Viewer" 
+                              FontSize="20" 
+                              FontWeight="Bold"
+                              Foreground="White"/>
+
+                    <Separator/>
+
+                    <!-- File Controls -->
+                    <TextBlock Text="Model" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"/>
+                    
+                    <!-- Model Library Dropdown -->
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <ComboBox x:Name="ModelComboBox" 
+                                  Grid.Column="0"
+                                  HorizontalAlignment="Stretch"
+                                  PlaceholderText="Select a model..."
+                                  Margin="0,0,4,0"/>
+                        <Button x:Name="AddModelButton" 
+                                Grid.Column="1"
+                                Content="+" 
+                                Width="28"
+                                ToolTip.Tip="Add model to library"
+                                Margin="0,0,4,0"/>
+                        <Button x:Name="RemoveModelButton" 
+                                Grid.Column="2"
+                                Content="−" 
+                                Width="28"
+                                ToolTip.Tip="Remove selected model"/>
+                    </Grid>
+                    
+                    <Button x:Name="LoadModelButton" 
+                           Content="Browse Model..."
+                           HorizontalAlignment="Stretch"
+                           Margin="0,4,0,0"/>
+                    
+                    <TextBlock Text="Environment" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"
+                              Margin="0,8,0,0"/>
+                    <Button x:Name="LoadEnvironmentButton" 
+                           Content="Load HDRI..."
+                           HorizontalAlignment="Stretch"/>
+
+                    <Separator/>
+
+                    <!-- Lighting Controls -->
+                    <TextBlock Text="Lighting" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"/>
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Main Light" Foreground="White"/>
+                        <Slider x:Name="MainLightSlider" 
+                               Minimum="0" 
+                               Maximum="10" 
+                               Value="4.0"
+                               TickFrequency="0.1"/>
+                        
+                        <TextBlock Text="Fill Light" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="FillLightSlider" 
+                               Minimum="0" 
+                               Maximum="5" 
+                               Value="1.5"
+                               TickFrequency="0.1"/>
+                        
+                        <TextBlock Text="Rim Light" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="RimLightSlider" 
+                               Minimum="0" 
+                               Maximum="5" 
+                               Value="1.0"
+                               TickFrequency="0.1"/>
+                        
+                        <TextBlock Text="Top Light" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="TopLightSlider" 
+                               Minimum="0" 
+                               Maximum="5" 
+                               Value="0.5"
+                               TickFrequency="0.1"/>
+                        
+                        <TextBlock Text="Ambient" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="AmbientSlider" 
+                               Minimum="0" 
+                               Maximum="0.5" 
+                               Value="0.08"
+                               TickFrequency="0.01"/>
+
+                        <Separator Margin="0,8,0,4"/>
+
+                        <TextBlock Text="Key Light Direction" Foreground="White"/>
+
+                        <CheckBox x:Name="KeyLightFollowsCameraCheckBox"
+                                 Content="Follow camera (side-front light)"
+                                 Foreground="White"
+                                 IsChecked="True"/>
+
+                        <TextBlock Text="Side Bias (left ↔ right)" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="KeyLightSideBiasSlider"
+                               Minimum="-1"
+                               Maximum="1"
+                               Value="-0.35"
+                               TickFrequency="0.01"/>
+
+                        <TextBlock Text="Up Bias (down ↔ up)" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="KeyLightUpBiasSlider"
+                               Minimum="-1"
+                               Maximum="1"
+                               Value="-0.25"
+                               TickFrequency="0.01"/>
+                    </StackPanel>
+
+                    <Separator/>
+
+                    <!-- Shadow Controls -->
+                    <TextBlock Text="Shadows" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"/>
+                    
+                    <StackPanel Spacing="8">
+                        <CheckBox x:Name="UseShadowsCheckBox" 
+                                 Content="Enable Shadows" 
+                                 Foreground="White"
+                                 IsChecked="True"/>
+                        
+                        <TextBlock Text="Shadow Strength" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="ShadowStrengthSlider" 
+                               Minimum="0" 
+                               Maximum="1" 
+                               Value="0.85"
+                               TickFrequency="0.05"/>
+                    </StackPanel>
+
+                    <Separator/>
+
+                    <!-- Post Processing -->
+                    <TextBlock Text="Post Processing" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"/>
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Exposure" Foreground="White"/>
+                        <Slider x:Name="ExposureSlider" 
+                               Minimum="0.1" 
+                               Maximum="5" 
+                               Value="1.0"
+                               TickFrequency="0.1"/>
+                        
+                        <CheckBox x:Name="UseBloomCheckBox" 
+                                 Content="Enable Bloom" 
+                                 Foreground="White"
+                                 IsChecked="False"
+                                 Margin="0,4,0,0"/>
+
+                        <TextBlock Text="Bloom Intensity" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="BloomIntensitySlider"
+                               Minimum="0"
+                               Maximum="1"
+                               Value="0.3"
+                               TickFrequency="0.01"/>
+                        
+                        <CheckBox x:Name="UseSSAOCheckBox" 
+                                 Content="Enable SSAO" 
+                                 Foreground="White"
+                                 IsChecked="False"
+                                 Margin="0,4,0,0"/>
+
+                        <TextBlock Text="SSAO Intensity" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="SsaoIntensitySlider"
+                               Minimum="0"
+                               Maximum="1"
+                               Value="0.5"
+                               TickFrequency="0.01"/>
+                    </StackPanel>
+
+                    <Separator/>
+
+                    <!-- Scene Controls -->
+                    <TextBlock Text="Scene" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"/>
+                    
+                    <CheckBox x:Name="ShowGroundCheckBox" 
+                             Content="Show Ground Plane" 
+                             Foreground="White"
+                             IsChecked="True"/>
+
+                    <TextBlock Text="Background" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"
+                              Margin="0,8,0,0"/>
+
+                    <StackPanel Spacing="6">
+                        <RadioButton x:Name="BackgroundLightRadio"
+                                     GroupName="BackgroundMode"
+                                     Content="Light"
+                                     Foreground="White"
+                                     IsChecked="True"/>
+                        <RadioButton x:Name="BackgroundDarkRadio"
+                                     GroupName="BackgroundMode"
+                                     Content="Dark"
+                                     Foreground="White"/>
+                    </StackPanel>
+
+                    <Separator/>
+
+                    <!-- Render Pipeline -->
+                    <TextBlock Text="Render Pipeline" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"/>
+                    
+                    <StackPanel Spacing="8">
+                        <CheckBox x:Name="UseIBLCheckBox" 
+                                 Content="Enable IBL" 
+                                 Foreground="White"
+                                 IsChecked="True"/>
+
+                        <TextBlock Text="IBL Intensity" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="IblIntensitySlider"
+                               Minimum="0"
+                               Maximum="2"
+                               Value="0.1"
+                               TickFrequency="0.01"/>
+                        
+                        <CheckBox x:Name="UseTonemappingCheckBox" 
+                                 Content="Enable Tonemapping" 
+                                 Foreground="White"
+                                 IsChecked="True"/>
+                        
+                        <CheckBox x:Name="UseFXAACheckBox" 
+                                 Content="Enable FXAA" 
+                                 Foreground="White"
+                                 IsChecked="True"/>
+
+                        <Separator Margin="0,8,0,8"/>
+
+                        <CheckBox x:Name="UseMSAACheckBox"
+                                 Content="Enable MSAA (geometry edges)"
+                                 Foreground="White"
+                                 IsChecked="True"/>
+
+                        <TextBlock Text="MSAA Samples" Foreground="White" Margin="0,4,0,0"/>
+                        <ComboBox x:Name="MsaaSamplesComboBox"
+                                 HorizontalAlignment="Stretch"
+                                 SelectedIndex="1">
+                            <ComboBoxItem Content="2x" Tag="2"/>
+                            <ComboBoxItem Content="4x" Tag="4"/>
+                            <ComboBoxItem Content="8x" Tag="8"/>
+                        </ComboBox>
+                        
+                        <TextBlock Text="Debug Mode" Foreground="White" Margin="0,8,0,0"/>
+                        <ComboBox x:Name="DebugModeComboBox" 
+                                 SelectedIndex="0"
+                                 HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="Normal"/>
+                            <ComboBoxItem Content="Raw Texture"/>
+                            <ComboBoxItem Content="Linear Albedo"/>
+                            <ComboBoxItem Content="IBL Only"/>
+                            <ComboBoxItem Content="Pre-Tonemap"/>
+                            <ComboBoxItem Content="Diffuse Only"/>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <Separator/>
+
+                    <!-- Material Override -->
+                    <TextBlock Text="Material Override" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"/>
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Specular Scale" Foreground="White"/>
+                        <Slider x:Name="SpecularScaleSlider" 
+                               Minimum="0" 
+                               Maximum="2" 
+                               Value="1.0"
+                               TickFrequency="0.05"/>
+                        
+                        <TextBlock Text="Roughness Offset" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="RoughnessOffsetSlider" 
+                               Minimum="-0.5" 
+                               Maximum="0.5" 
+                               Value="0"
+                               TickFrequency="0.05"/>
+                        
+                        <TextBlock Text="Metallic Offset" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="MetallicOffsetSlider" 
+                               Minimum="-0.5" 
+                               Maximum="0.5" 
+                               Value="0"
+                               TickFrequency="0.05"/>
+                    </StackPanel>
+
+                    <Separator/>
+
+                    <!-- Info -->
+                    <TextBlock Text="Tools"
+                              FontWeight="SemiBold"
+                              Foreground="White"/>
+                    
+                    <Button x:Name="RunGcButton"
+                            Content="Run GC"
+                            HorizontalAlignment="Stretch"/>
+                    
+                    <TextBlock x:Name="InfoText"
+                              Text="Load a model to begin"
+                              Foreground="#888888"
+                              TextWrapping="Wrap"
+                              FontSize="11"/>
+
+                    <TextBlock Text="Controls:" 
+                              FontWeight="SemiBold" 
+                              Foreground="White"
+                              Margin="0,16,0,0"/>
+                    <TextBlock Foreground="#CCCCCC" 
+                              TextWrapping="Wrap"
+                              FontSize="11">
+                        • Left mouse: Orbit
+                        • Middle mouse: Pan
+                        • Scroll wheel: Zoom
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

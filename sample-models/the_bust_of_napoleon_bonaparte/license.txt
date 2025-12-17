@@ -1,0 +1,11 @@
+Model Information:
+* title:	The bust of Napoleon Bonaparte
+* source:	https://sketchfab.com/3d-models/the-bust-of-napoleon-bonaparte-a177bf0e121641bea6cf1d58ad3efc5b
+* author:	Virtual Museums of Małopolska (https://sketchfab.com/WirtualneMuzeaMalopolski)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "The bust of Napoleon Bonaparte" (https://sketchfab.com/3d-models/the-bust-of-napoleon-bonaparte-a177bf0e121641bea6cf1d58ad3efc5b) by Virtual Museums of Małopolska (https://sketchfab.com/WirtualneMuzeaMalopolski) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

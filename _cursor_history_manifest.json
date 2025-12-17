@@ -1,0 +1,205 @@
+{
+  "project_root": "/Users/danipen/Projects/Avalonia3DViewer",
+  "history_root": "/Users/danipen/Library/Application Support/Cursor/User/History",
+  "cutoff_local": "2025-12-17 13:37:00",
+  "cutoff_ms": 1765975020000,
+  "recovered_files": 28,
+  "files": [
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/PostProcessing/ShadowMap.cs",
+      "relative": "PostProcessing/ShadowMap.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/3edc93cf",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/3edc93cf/3RXC.cs",
+      "timestamp_ms": 1765970619324
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/PostProcessing/ScreenQuad.cs",
+      "relative": "PostProcessing/ScreenQuad.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-2ee1b242",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-2ee1b242/x9bl.cs",
+      "timestamp_ms": 1765970606468
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/PostProcessing/BloomEffect.cs",
+      "relative": "PostProcessing/BloomEffect.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-3a6467c9",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-3a6467c9/aB9o.cs",
+      "timestamp_ms": 1765970579979
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Shaders/shadow.frag",
+      "relative": "Shaders/shadow.frag",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-777760f0",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-777760f0/q6Pn.frag",
+      "timestamp_ms": 1765891664100
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Shaders/fxaa.frag",
+      "relative": "Shaders/fxaa.frag",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-799bcd02",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-799bcd02/msGh.frag",
+      "timestamp_ms": 1765962424612
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/Camera.cs",
+      "relative": "Rendering/Camera.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-62218399",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-62218399/MBjW.cs",
+      "timestamp_ms": 1765970668455
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/ModelLoader.cs",
+      "relative": "Rendering/ModelLoader.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/3d5ce334",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/3d5ce334/Cjmb.cs",
+      "timestamp_ms": 1765971461094
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/MainWindow.axaml.cs",
+      "relative": "MainWindow.axaml.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-4a88dbf5",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-4a88dbf5/jZUd.cs",
+      "timestamp_ms": 1765970372661
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/Mesh.cs",
+      "relative": "Rendering/Mesh.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/4bfea01f",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/4bfea01f/Emqq.cs",
+      "timestamp_ms": 1765970703546
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/ModelLibrary.cs",
+      "relative": "ModelLibrary.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/52a6377d",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/52a6377d/WYZT.cs",
+      "timestamp_ms": 1765970934584
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/PackedTextureMode.cs",
+      "relative": "Rendering/PackedTextureMode.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-471a9bb6",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-471a9bb6/MPPL.cs",
+      "timestamp_ms": 1765898306891
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/PostProcessing/FXAAEffect.cs",
+      "relative": "PostProcessing/FXAAEffect.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-623c0f2",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-623c0f2/XCwN.cs",
+      "timestamp_ms": 1765970585626
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/Model.cs",
+      "relative": "Rendering/Model.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/2b2c2307",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/2b2c2307/tjIb.cs",
+      "timestamp_ms": 1765970986801
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Shaders/pbr.vert",
+      "relative": "Shaders/pbr.vert",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-77194d71",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-77194d71/uL2o.vert",
+      "timestamp_ms": 1765891664120
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/PostProcessing/BlitEffect.cs",
+      "relative": "PostProcessing/BlitEffect.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-37f17835",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-37f17835/7Za5.cs",
+      "timestamp_ms": 1765970565791
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/Texture.cs",
+      "relative": "Rendering/Texture.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/3e340755",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/3e340755/xHZz.cs",
+      "timestamp_ms": 1765970737587
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Shaders/blit.frag",
+      "relative": "Shaders/blit.frag",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/1e624a5b",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/1e624a5b/XH1Q.frag",
+      "timestamp_ms": 1765905184828
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/ProceduralHDRI.cs",
+      "relative": "Rendering/ProceduralHDRI.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/63dfc7c",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/63dfc7c/0oTz.cs",
+      "timestamp_ms": 1765971009351
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/IBLEnvironment.cs",
+      "relative": "Rendering/IBLEnvironment.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-7da855f4",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-7da855f4/0enz.cs",
+      "timestamp_ms": 1765970890933
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Shaders/composite.frag",
+      "relative": "Shaders/composite.frag",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-43069617",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-43069617/inOb.frag",
+      "timestamp_ms": 1765899074474
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Shaders/ssao.frag",
+      "relative": "Shaders/ssao.frag",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/1e5bce62",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/1e5bce62/D2qB.frag",
+      "timestamp_ms": 1765962424440
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/MainWindow.axaml",
+      "relative": "MainWindow.axaml",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-12b5bbcd",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-12b5bbcd/TIov.axaml",
+      "timestamp_ms": 1765966725241
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Shaders/shadow.vert",
+      "relative": "Shaders/shadow.vert",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-777049b1",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-777049b1/mu9V.vert",
+      "timestamp_ms": 1765891664100
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/PostProcessing/SSAOEffect.cs",
+      "relative": "PostProcessing/SSAOEffect.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/4c0f8872",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/4c0f8872/wibj.cs",
+      "timestamp_ms": 1765970642188
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/PostProcessing/GBuffer.cs",
+      "relative": "PostProcessing/GBuffer.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/5e45cfc4",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/5e45cfc4/bS55.cs",
+      "timestamp_ms": 1765970601161
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Rendering/Shader.cs",
+      "relative": "Rendering/Shader.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/3c1e8fa7",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/3c1e8fa7/IB0e.cs",
+      "timestamp_ms": 1765970677306
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Shaders/pbr.frag",
+      "relative": "Shaders/pbr.frag",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-772064b0",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-772064b0/pP4e.frag",
+      "timestamp_ms": 1765903055572
+    },
+    {
+      "resource": "/Users/danipen/Projects/Avalonia3DViewer/Controls/GLViewport.cs",
+      "relative": "Controls/GLViewport.cs",
+      "history_dir": "/Users/danipen/Library/Application Support/Cursor/User/History/-21311117",
+      "history_file": "/Users/danipen/Library/Application Support/Cursor/User/History/-21311117/xQgl.cs",
+      "timestamp_ms": 1765971471165
+    }
+  ]
+}

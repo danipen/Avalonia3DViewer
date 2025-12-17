@@ -1,0 +1,11 @@
+Model Information:
+* title:	burnout 3 vineyard
+* source:	https://sketchfab.com/3d-models/burnout-3-vineyard-1b44029d774a4e6790335d1967807006
+* author:	amogusstrikesback2 (https://sketchfab.com/amogusstrikesback2)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "burnout 3 vineyard" (https://sketchfab.com/3d-models/burnout-3-vineyard-1b44029d774a4e6790335d1967807006) by amogusstrikesback2 (https://sketchfab.com/amogusstrikesback2) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

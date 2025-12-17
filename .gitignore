@@ -1,0 +1,41 @@
+# Build output
+bin/
+obj/
+*.user
+*.suo
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Rider
+.idea/
+*.sln.iml
+
+# macOS
+.DS_Store
+
+# User assets
+Assets/
+*.hdr
+*.exr
+*.obj
+*.fbx
+*.gltf
+*.glb
+*.dae
+*.3ds
+*.blend
+*.stl
+
+# Logs
+*.log
+sample-models/joseph_hume_marble_bust/license.txt
+sample-models/joseph_hume_marble_bust/scene.bin
+sample-models/kaiser_franz_joseph_i./license.txt
+sample-models/kaiser_franz_joseph_i./scene.bin
+sample-models/kaiser_franz_joseph_i./textures/Kaiser_O_Material_u1_v1_baseColor.png

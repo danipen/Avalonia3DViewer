@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Avalonia3DViewer", "Avalonia3DViewer.csproj", "{BED189A2-3F76-895B-7246-F652700376E7}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BED189A2-3F76-895B-7246-F652700376E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BED189A2-3F76-895B-7246-F652700376E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BED189A2-3F76-895B-7246-F652700376E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BED189A2-3F76-895B-7246-F652700376E7}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5457A01A-A1BE-491E-A280-7051A56C9DF4}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,11 @@
+Model Information:
+* title:	2024 BMW X3 M40i
+* source:	https://sketchfab.com/3d-models/2024-bmw-x3-m40i-d35d04aac7f242d997af5d8d2d7fbeca
+* author:	Ddiaz Design (https://sketchfab.com/ddiaz-design)
+
+Model License:
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "2024 BMW X3 M40i" (https://sketchfab.com/3d-models/2024-bmw-x3-m40i-d35d04aac7f242d997af5d8d2d7fbeca) by Ddiaz Design (https://sketchfab.com/ddiaz-design) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)

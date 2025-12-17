@@ -1,0 +1,11 @@
+Model Information:
+* title:	optimized stage speakers
+* source:	https://sketchfab.com/3d-models/optimized-stage-speakers-5936638df5c141d79accaec123d449ad
+* author:	photon (that one larry) (https://sketchfab.com/Professor_E12)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "optimized stage speakers" (https://sketchfab.com/3d-models/optimized-stage-speakers-5936638df5c141d79accaec123d449ad) by photon (that one larry) (https://sketchfab.com/Professor_E12) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

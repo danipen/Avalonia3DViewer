@@ -1,0 +1,11 @@
+Model Information:
+* title:	IZH-27
+* source:	https://sketchfab.com/3d-models/izh-27-7d9b3e3ea2ad4cab841a7b26ea0d3562
+* author:	PeLmEsHkO (https://sketchfab.com/pelmeshko_tf2)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "IZH-27" (https://sketchfab.com/3d-models/izh-27-7d9b3e3ea2ad4cab841a7b26ea0d3562) by PeLmEsHkO (https://sketchfab.com/pelmeshko_tf2) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
