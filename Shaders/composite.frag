@@ -20,19 +20,20 @@ uniform float ssaoIntensity;  // 0.0 - 1.0, default 0.5
 // ============================================================================
 
 // sRGB => XYZ => D65_2_D60 => AP1 => RRT_SAT
-// NOTE: GLSL mat3 is column-major. We store matrices in column-major order and
-// multiply as (mat3 * vec3) to avoid accidental transposes.
+// NOTE: GLSL matrices are column-major. Using mat3(vec3, vec3, vec3) makes the
+// column ordering explicit and avoids the common "transposed ACES matrix" bug
+// (which can tint neutrals like white/purple).
 const mat3 ACESInputMat = mat3(
-    0.59719, 0.35458, 0.04823,  // Column 0
-    0.07600, 0.90834, 0.01566,  // Column 1
-    0.02840, 0.13383, 0.83777   // Column 2
+    vec3(0.59719, 0.07600, 0.02840), // column 0
+    vec3(0.35458, 0.90834, 0.13383), // column 1
+    vec3(0.04823, 0.01566, 0.83777)  // column 2
 );
 
 // ODT_SAT => XYZ => D60_2_D65 => sRGB
 const mat3 ACESOutputMat = mat3(
-     1.60475, -0.53108, -0.07367,  // Column 0
-    -0.10208,  1.10813, -0.00605,  // Column 1
-    -0.00327, -0.07276,  1.07602   // Column 2
+    vec3( 1.60475, -0.10208, -0.00327), // column 0
+    vec3(-0.53108,  1.10813, -0.07276), // column 1
+    vec3(-0.07367, -0.00605,  1.07602)  // column 2
 );
 
 vec3 RRTAndODTFit(vec3 v)
