@@ -96,6 +96,13 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
     public bool UseSSAO { get; set; } = true;
     public float SsaoIntensity { get; set; } = 0.5f;
     public bool ShowGround { get; set; } = true;
+
+    // Ground rendering mode:
+    // - When enabled, the ground becomes a "shadow catcher": it is invisible (matches background)
+    //   but still receives shadows from the shadow map.
+    public bool UseShadowCatcherGround { get; set; } = true;
+    // 0..1 multiplier for how visible the shadow is on the catcher.
+    public float ShadowCatcherOpacity { get; set; } = 1.0f;
     
     // Light intensities - increased for better illumination
     public float MainLightIntensity { get; set; } = 5.0f;
@@ -1124,6 +1131,8 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         }
         
         _pbrShader.Use();
+        // Default for regular meshes.
+        _pbrShader.SetUniform("shadowCatcher", false);
         _pbrShader.SetUniform("uModel", model);
         _pbrShader.SetUniform("uView", view);
         _pbrShader.SetUniform("uProjection", projection);
@@ -1405,6 +1414,31 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         _gl!.Disable(EnableCap.Blend);
         _gl.DepthMask(true);
 
+        // Shadow-catcher mode: make the plane match the clear/background color exactly (in linear HDR space),
+        // and only darken it via the shadow term in the shader.
+        if (UseShadowCatcherGround)
+        {
+            var bg = GetBackgroundColor();
+            _pbrShader!.SetUniform("shadowCatcher", true);
+            _pbrShader.SetUniform("shadowCatcherBackground", new Vector3(bg.X, bg.Y, bg.Z));
+            _pbrShader.SetUniform("shadowCatcherOpacity", ShadowCatcherOpacity);
+
+            // Keep the rest of the material state predictable (though the shader early-outs).
+            _pbrShader.SetUniform("alphaMode", AlphaOpaque);
+            _pbrShader.SetUniform("opacity", 1.0f);
+            _pbrShader.SetUniform("useAlbedoMap", false);
+            _pbrShader.SetUniform("useNormalMap", false);
+            _pbrShader.SetUniform("useMetallicMap", false);
+            _pbrShader.SetUniform("useRoughnessMap", false);
+            _pbrShader.SetUniform("useAOMap", false);
+
+            _groundPlane.Draw();
+
+            // Restore for subsequent draws.
+            _pbrShader.SetUniform("shadowCatcher", false);
+            return;
+        }
+
         // Pick a ground base color that stays distinct from the chosen background.
         // - Light background: keep the floor clearly darker so silhouettes read.
         // - Dark background: keep the floor slightly lighter (previously it matched the background).
@@ -1433,6 +1467,9 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
 
         // Restore global specular for subsequent draws (e.g. transparent meshes).
         _pbrShader.SetUniform("specularScale", SpecularScale);
+
+        // Ensure this is reset if we ever toggled it elsewhere.
+        _pbrShader.SetUniform("shadowCatcher", false);
     }
     
     /// <summary>

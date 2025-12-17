@@ -230,6 +230,19 @@
                              Foreground="White"
                              IsChecked="True"/>
 
+                    <CheckBox x:Name="UseShadowCatcherGroundCheckBox"
+                             Content="Shadow catcher ground (invisible)"
+                             Foreground="White"
+                             IsChecked="False"
+                             Margin="0,6,0,0"/>
+
+                    <TextBlock Text="Shadow catcher opacity" Foreground="White" Margin="0,4,0,0"/>
+                    <Slider x:Name="ShadowCatcherOpacitySlider"
+                           Minimum="0"
+                           Maximum="1"
+                           Value="1"
+                           TickFrequency="0.01"/>
+
                     <TextBlock Text="Background" 
                               FontWeight="SemiBold" 
                               Foreground="White"

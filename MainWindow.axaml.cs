@@ -28,6 +28,8 @@ public partial class MainWindow : Window
     private CheckBox? _useBloomCheckBox;
     private CheckBox? _useSSAOCheckBox;
     private CheckBox? _showGroundCheckBox;
+    private CheckBox? _useShadowCatcherGroundCheckBox;
+    private Slider? _shadowCatcherOpacitySlider;
     private RadioButton? _backgroundLightRadio;
     private RadioButton? _backgroundDarkRadio;
     private CheckBox? _useIBLCheckBox;
@@ -50,6 +52,8 @@ public partial class MainWindow : Window
     private Border? _loadingOverlay;
     private TextBlock? _loadingText;
     private ProgressBar? _loadingProgressBar;
+    
+    private bool _updatingGroundUi;
 
     public MainWindow()
     {
@@ -101,6 +105,8 @@ public partial class MainWindow : Window
         _useBloomCheckBox = this.FindControl<CheckBox>("UseBloomCheckBox");
         _useSSAOCheckBox = this.FindControl<CheckBox>("UseSSAOCheckBox");
         _showGroundCheckBox = this.FindControl<CheckBox>("ShowGroundCheckBox");
+        _useShadowCatcherGroundCheckBox = this.FindControl<CheckBox>("UseShadowCatcherGroundCheckBox");
+        _shadowCatcherOpacitySlider = this.FindControl<Slider>("ShadowCatcherOpacitySlider");
         _backgroundLightRadio = this.FindControl<RadioButton>("BackgroundLightRadio");
         _backgroundDarkRadio = this.FindControl<RadioButton>("BackgroundDarkRadio");
         _useIBLCheckBox = this.FindControl<CheckBox>("UseIBLCheckBox");
@@ -151,6 +157,8 @@ public partial class MainWindow : Window
         SetCheckBoxValue(_useBloomCheckBox, _viewport.UseBloom);
         SetCheckBoxValue(_useSSAOCheckBox, _viewport.UseSSAO);
         SetCheckBoxValue(_showGroundCheckBox, _viewport.ShowGround);
+        SetCheckBoxValue(_useShadowCatcherGroundCheckBox, _viewport.UseShadowCatcherGround);
+        SetSliderValue(_shadowCatcherOpacitySlider, _viewport.ShadowCatcherOpacity);
         SetCheckBoxValue(_useIBLCheckBox, _viewport.UseIBL);
         SetCheckBoxValue(_useTonemappingCheckBox, _viewport.UseTonemapping);
         SetCheckBoxValue(_useFXAACheckBox, _viewport.UseFXAA);
@@ -182,6 +190,8 @@ public partial class MainWindow : Window
         bool ssao = _useSSAOCheckBox?.IsChecked == true;
         bool ibl = _useIBLCheckBox?.IsChecked == true;
         bool tonemapping = _useTonemappingCheckBox?.IsChecked == true;
+        bool showGround = _showGroundCheckBox?.IsChecked == true;
+        bool shadowCatcher = _useShadowCatcherGroundCheckBox?.IsChecked == true;
 
         if (_keyLightSideBiasSlider != null) _keyLightSideBiasSlider.IsEnabled = followCamera;
         if (_keyLightUpBiasSlider != null) _keyLightUpBiasSlider.IsEnabled = followCamera;
@@ -190,6 +200,8 @@ public partial class MainWindow : Window
         if (_ssaoIntensitySlider != null) _ssaoIntensitySlider.IsEnabled = ssao;
         if (_iblIntensitySlider != null) _iblIntensitySlider.IsEnabled = ibl;
         if (_tonemapCompensationSlider != null) _tonemapCompensationSlider.IsEnabled = tonemapping;
+        if (_useShadowCatcherGroundCheckBox != null) _useShadowCatcherGroundCheckBox.IsEnabled = showGround;
+        if (_shadowCatcherOpacitySlider != null) _shadowCatcherOpacitySlider.IsEnabled = showGround && shadowCatcher;
 
         // Already handled elsewhere, but keeping it consistent if called from init.
         if (_msaaSamplesComboBox != null && _useMSAACheckBox != null)
@@ -272,7 +284,9 @@ public partial class MainWindow : Window
         BindCheckBoxToViewport(_useShadowsCheckBox, v => _viewport!.UseShadows = v);
         BindCheckBoxToViewport(_useBloomCheckBox, v => _viewport!.UseBloom = v);
         BindCheckBoxToViewport(_useSSAOCheckBox, v => _viewport!.UseSSAO = v);
-        BindCheckBoxToViewport(_showGroundCheckBox, v => _viewport!.ShowGround = v);
+        // Ground/shadow-catcher needs a bit of coordination (turning off ground disables shadow catcher, and
+        // turning on shadow catcher forces ground on).
+        SetupGroundHandlers();
         BindCheckBoxToViewport(_useIBLCheckBox, v => _viewport!.UseIBL = v);
         BindCheckBoxToViewport(_useTonemappingCheckBox, v => _viewport!.UseTonemapping = v);
         BindCheckBoxToViewport(_useFXAACheckBox, v => _viewport!.UseFXAA = v);
@@ -293,6 +307,8 @@ public partial class MainWindow : Window
         HookIsCheckedChanged(_useIBLCheckBox);
         HookIsCheckedChanged(_useTonemappingCheckBox);
         HookIsCheckedChanged(_useMSAACheckBox);
+        HookIsCheckedChanged(_showGroundCheckBox);
+        HookIsCheckedChanged(_useShadowCatcherGroundCheckBox);
 
         void HookIsCheckedChanged(CheckBox? checkBox)
         {
@@ -326,6 +342,74 @@ public partial class MainWindow : Window
             setter(checkBox.IsChecked.Value);
             _viewport.RequestNextFrameRendering();
         };
+    }
+
+    private void SetupGroundHandlers()
+    {
+        if (_showGroundCheckBox == null || _useShadowCatcherGroundCheckBox == null) return;
+
+        _showGroundCheckBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property.Name != "IsChecked" || _viewport == null || !_showGroundCheckBox.IsChecked.HasValue) return;
+            if (_updatingGroundUi) return;
+
+            _updatingGroundUi = true;
+            try
+            {
+                bool show = _showGroundCheckBox.IsChecked.Value;
+                _viewport.ShowGround = show;
+
+                if (!show)
+                {
+                    _useShadowCatcherGroundCheckBox.IsChecked = false;
+                    _viewport.UseShadowCatcherGround = false;
+                }
+            }
+            finally
+            {
+                _updatingGroundUi = false;
+            }
+
+            UpdateDependentControlEnabledStates();
+            _viewport.RequestNextFrameRendering();
+        };
+
+        _useShadowCatcherGroundCheckBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property.Name != "IsChecked" || _viewport == null || !_useShadowCatcherGroundCheckBox.IsChecked.HasValue) return;
+            if (_updatingGroundUi) return;
+
+            _updatingGroundUi = true;
+            try
+            {
+                bool enabled = _useShadowCatcherGroundCheckBox.IsChecked.Value;
+                _viewport.UseShadowCatcherGround = enabled;
+
+                if (enabled)
+                {
+                    _showGroundCheckBox.IsChecked = true;
+                    _viewport.ShowGround = true;
+                }
+            }
+            finally
+            {
+                _updatingGroundUi = false;
+            }
+
+            UpdateDependentControlEnabledStates();
+            _viewport.RequestNextFrameRendering();
+        };
+
+        // Opacity slider binding
+        if (_shadowCatcherOpacitySlider != null)
+        {
+            _shadowCatcherOpacitySlider.PropertyChanged += (_, e) =>
+            {
+                if (e.Property.Name != "Value" || _viewport == null) return;
+                _viewport.ShadowCatcherOpacity = (float)_shadowCatcherOpacitySlider.Value;
+                _viewport.RequestNextFrameRendering();
+            };
+        }
     }
 
     private void SetupMsaaCheckBoxHandler()

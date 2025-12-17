@@ -103,7 +103,7 @@ vec3 Dither(vec3 color)
 }
 
 // ============================================================================
-// VIGNETTE (optional, Sketchfab-like subtle darkening at edges)
+// VIGNETTE (optional, subtle darkening at edges)
 // ============================================================================
 
 float Vignette(vec2 uv, float intensity)

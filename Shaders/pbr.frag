@@ -59,6 +59,14 @@ uniform mat4 lightSpaceMatrix;
 uniform bool useShadows;
 uniform float shadowStrength;
 
+// Shadow-catcher ground:
+// When enabled, the material becomes invisible by outputting exactly the background color,
+// only darkened by the shadow term. This keeps the ground visually "blended" with the
+// background while still receiving shadows.
+uniform bool shadowCatcher;
+uniform vec3 shadowCatcherBackground; // linear
+uniform float shadowCatcherOpacity;   // 0..1
+
 // Debug mode: 0=normal, 1=raw texture, 2=linear albedo, 3=IBL only, 4=pre-tonemap HDR
 uniform int debugMode;
 
@@ -340,6 +348,24 @@ vec3 calculateIBL(vec3 N, vec3 V, vec3 R, vec3 F0, vec3 albedoColor,
 
 void main()
 {
+    // Shadow catcher early-out (used for the ground plane).
+    // Important: we still compute the shadow value so contact shadows appear.
+    if (shadowCatcher)
+    {
+        vec3 N = normalize(fs_in.Normal);
+        float shadow = 0.0;
+        if (useShadows)
+        {
+            vec4 fragPosLightSpace = lightSpaceMatrix * vec4(fs_in.FragPos, 1.0);
+            shadow = calculateShadow(fragPosLightSpace, N, normalize(lightDir));
+        }
+
+        float darken = shadow * shadowStrength * clamp(shadowCatcherOpacity, 0.0, 1.0);
+        vec3 color = shadowCatcherBackground * (1.0 - darken);
+        FragColor = vec4(color, 1.0);
+        return;
+    }
+
     // Sample material properties
     // NOTE: If albedo texture was loaded with sRGB internal format, the GPU already
     // converts to linear space on sampling. If not (Rgba8), we need manual conversion.
