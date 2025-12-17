@@ -1,10 +1,10 @@
-#version 330 core
+#version 150
 
-layout (location = 0) in vec3 aPosition;
-layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec2 aTexCoord;
-layout (location = 3) in vec3 aTangent;
-layout (location = 4) in vec3 aBitangent;
+in vec3 aPosition;
+in vec3 aNormal;
+in vec2 aTexCoord;
+in vec3 aTangent;
+in vec3 aBitangent;
 
 out VS_OUT {
     vec3 FragPos;

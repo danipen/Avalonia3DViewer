@@ -10,7 +10,19 @@ public class Shader : IDisposable
     private uint _handle;
     private bool _disposed;
 
-    public Shader(GL gl, string vertexPath, string fragmentPath)
+    // Binding conventions used by this project (keeps VAO setup simple and GLSL 150-compatible).
+    // NOTE: BindAttribLocation must happen BEFORE linking.
+    private static readonly (uint location, string name)[] DefaultAttribBindings =
+    {
+        (0, "aPosition"),
+        (0, "aPos"),
+        (1, "aNormal"),
+        (2, "aTexCoord"),
+        (3, "aTangent"),
+        (4, "aBitangent"),
+    };
+
+    public Shader(GL gl, string vertexPath, string fragmentPath, (uint location, string name)[]? fragOutputBindings = null)
     {
         _gl = gl;
 
@@ -20,6 +32,10 @@ public class Shader : IDisposable
         _handle = _gl.CreateProgram();
         _gl.AttachShader(_handle, vertex);
         _gl.AttachShader(_handle, fragment);
+
+        // Ensure attribute/fragment-output locations are consistent across GLSL versions (esp. GLSL 150 on macOS).
+        BindLocations(fragOutputBindings);
+
         _gl.LinkProgram(_handle);
 
         ValidateLinkStatus();
@@ -28,6 +44,18 @@ public class Shader : IDisposable
         _gl.DetachShader(_handle, fragment);
         _gl.DeleteShader(vertex);
         _gl.DeleteShader(fragment);
+    }
+
+    private void BindLocations((uint location, string name)[]? fragOutputBindings)
+    {
+        foreach (var (location, name) in DefaultAttribBindings)
+            _gl.BindAttribLocation(_handle, location, name);
+
+        if (fragOutputBindings != null)
+        {
+            foreach (var (location, name) in fragOutputBindings)
+                _gl.BindFragDataLocation(_handle, location, name);
+        }
     }
 
     private void ValidateLinkStatus()
@@ -88,16 +116,29 @@ public class Shader : IDisposable
             _gl.Uniform1(location, value ? 1 : 0);
     }
 
+    private static string ResolvePath(string path)
+    {
+        if (Path.IsPathRooted(path))
+            return path;
+
+        // Shaders are copied to output in Avalonia3DViewer.csproj; load relative to the app base directory.
+        return Path.Combine(AppContext.BaseDirectory, path);
+    }
+
     private uint LoadShader(ShaderType type, string path)
     {
-        string src = File.ReadAllText(path);
+        var fullPath = ResolvePath(path);
+        string src = File.ReadAllText(fullPath);
         uint handle = _gl.CreateShader(type);
         _gl.ShaderSource(handle, src);
         _gl.CompileShader(handle);
 
-        string infoLog = _gl.GetShaderInfoLog(handle);
-        if (!string.IsNullOrWhiteSpace(infoLog))
-            throw new Exception($"Error compiling shader ({path}): {infoLog}");
+        _gl.GetShader(handle, ShaderParameterName.CompileStatus, out var status);
+        if (status == 0)
+        {
+            string infoLog = _gl.GetShaderInfoLog(handle);
+            throw new Exception($"Error compiling shader ({fullPath}): {infoLog}");
+        }
 
         return handle;
     }

@@ -33,8 +33,8 @@ public class ShadowMap : IDisposable
         
         _depthMap = _gl.GenTexture();
         _gl.BindTexture(TextureTarget.Texture2D, _depthMap);
-        _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.DepthComponent, 
-            ShadowWidth, ShadowHeight, 0, PixelFormat.DepthComponent, PixelType.Float, (void*)null);
+        _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.DepthComponent24, 
+            ShadowWidth, ShadowHeight, 0, PixelFormat.DepthComponent, PixelType.UnsignedInt, (void*)null);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Linear);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToBorder);

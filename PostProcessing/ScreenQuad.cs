@@ -44,8 +44,10 @@ public class ScreenQuad : IDisposable
             
             _gl.EnableVertexAttribArray(0);
             _gl.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 4 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(1);
-            _gl.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+            // Keep attribute indices consistent with Mesh shaders:
+            // 0 = position, 2 = texCoord
+            _gl.EnableVertexAttribArray(2);
+            _gl.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, 4 * sizeof(float), (void*)(2 * sizeof(float)));
         }
         
         _gl.BindVertexArray(0);

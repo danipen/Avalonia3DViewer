@@ -31,7 +31,17 @@ public class GBuffer : IDisposable
         _width = width;
         _height = height;
         
-        _geometryShader = new ShaderProgram(_gl, "Shaders/geometry.vert", "Shaders/geometry.frag");
+        // Bind MRT outputs explicitly for GLSL 150 (no layout(location=...)).
+        _geometryShader = new ShaderProgram(
+            _gl,
+            "Shaders/geometry.vert",
+            "Shaders/geometry.frag",
+            fragOutputBindings: new[]
+            {
+                (0u, "gPosition"),
+                (1u, "gNormal"),
+                (2u, "gAlbedo"),
+            });
         CreateFramebuffer();
     }
 
@@ -74,7 +84,7 @@ public class GBuffer : IDisposable
     {
         uint texture = _gl.GenTexture();
         _gl.BindTexture(TextureTarget.Texture2D, texture);
-        _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba, 
+        _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba8, 
             (uint)_width, (uint)_height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, (void*)null);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
@@ -95,7 +105,7 @@ public class GBuffer : IDisposable
     {
         _rboDepth = _gl.GenRenderbuffer();
         _gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _rboDepth);
-        _gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent, 
+        _gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent24, 
             (uint)_width, (uint)_height);
         _gl.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, 
             RenderbufferTarget.Renderbuffer, _rboDepth);

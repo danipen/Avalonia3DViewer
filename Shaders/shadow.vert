@@ -1,6 +1,6 @@
-#version 330 core
+#version 150
 
-layout (location = 0) in vec3 aPosition;
+in vec3 aPosition;
 
 uniform mat4 lightSpaceMatrix;
 uniform mat4 model;
