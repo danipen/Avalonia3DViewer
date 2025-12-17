@@ -1404,8 +1404,14 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         // Ground is opaque and should write depth (also prevents it from overwriting blended transparency by mistake).
         _gl!.Disable(EnableCap.Blend);
         _gl.DepthMask(true);
+
+        // Adjust ground brightness based on background mode so it stays readable in both light/dark themes.
+        // (UseDarkBackground is a UI toggle; we keep the ground subtly darker than the background.)
+        Vector3 groundAlbedo = UseDarkBackground
+            ? new Vector3(0.04f, 0.04f, 0.04f)
+            : new Vector3(0.40f, 0.40f, 0.40f);
         
-        _pbrShader!.SetUniform("albedo", new Vector3(0.4f, 0.4f, 0.4f));
+        _pbrShader!.SetUniform("albedo", groundAlbedo);
         _pbrShader.SetUniform("metallic", 0.0f);
         _pbrShader.SetUniform("roughness", 0.85f);
         _pbrShader.SetUniform("ao", 1.0f);
