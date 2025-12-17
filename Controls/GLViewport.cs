@@ -1203,6 +1203,10 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
             meshCount++;
         }
 
+        // Render ground plane as opaque geometry BEFORE the blended transparency pass.
+        // Transparent meshes often render with depth writes disabled; drawing the ground after that can overwrite glass.
+        RenderGroundPlane();
+
         // Draw blended transparent meshes back-to-front (blending on, no depth writes)
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
@@ -1239,9 +1243,6 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
 
         _gl.DepthMask(true);
         _gl.Disable(EnableCap.Blend);
-        
-        // Render ground plane with simple gray material
-        RenderGroundPlane();
     }
     
     /// <summary>
@@ -1399,6 +1400,10 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         
         if (!cameraAboveGround || !lookingDownward)
             return;
+
+        // Ground is opaque and should write depth (also prevents it from overwriting blended transparency by mistake).
+        _gl!.Disable(EnableCap.Blend);
+        _gl.DepthMask(true);
         
         _pbrShader!.SetUniform("albedo", new Vector3(0.4f, 0.4f, 0.4f));
         _pbrShader.SetUniform("metallic", 0.0f);
@@ -1508,7 +1513,9 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
             new Vertex { Position = new Vector3(centerX + groundSize, groundY, centerZ + groundSize), Normal = new Vector3(0, 1, 0), TexCoord = new Vector2(1, 1) },
             new Vertex { Position = new Vector3(centerX - groundSize, groundY, centerZ + groundSize), Normal = new Vector3(0, 1, 0), TexCoord = new Vector2(0, 1) }
         };
-        var groundIndices = new uint[] { 0, 1, 2, 0, 2, 3 };
+        // Winding order matters because back-face culling is enabled. This order makes the plane front-face point +Y
+        // (visible from above, which matches the camera framing/orbit defaults).
+        var groundIndices = new uint[] { 0, 2, 1, 0, 3, 2 };
         _groundPlane = new Mesh(_gl, groundVertices, groundIndices);
     }
 }
