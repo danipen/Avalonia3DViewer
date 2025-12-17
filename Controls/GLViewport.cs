@@ -1405,11 +1405,12 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         _gl!.Disable(EnableCap.Blend);
         _gl.DepthMask(true);
 
-        // Adjust ground brightness based on background mode so it stays readable in both light/dark themes.
-        // (UseDarkBackground is a UI toggle; we keep the ground subtly darker than the background.)
+        // Pick a ground base color that stays distinct from the chosen background.
+        // - Light background: keep the floor clearly darker so silhouettes read.
+        // - Dark background: keep the floor slightly lighter (previously it matched the background).
         Vector3 groundAlbedo = UseDarkBackground
-            ? new Vector3(0.04f, 0.04f, 0.04f)
-            : new Vector3(0.40f, 0.40f, 0.40f);
+            ? new Vector3(0.09f, 0.09f, 0.09f)
+            : new Vector3(0.22f, 0.22f, 0.22f);
         
         // The ground is a huge flat surface: even small specular reflections can reveal cubemap seams (looks like
         // a "cube corner" in the floor). Make it fully matte for stability/readability.
