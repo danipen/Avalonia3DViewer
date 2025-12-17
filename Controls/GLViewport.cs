@@ -88,9 +88,9 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
     private bool _isMiddleButtonPressed;
 
     // Rendering and lighting properties
-    public float Exposure { get; set; } = 1.25f;
+    public float Exposure { get; set; } = 1.15f;
     // Applied only when tonemapping is enabled (helps match perceived brightness when toggling tonemap).
-    public float TonemapExposureCompensation { get; set; } = 1.15f;
+    public float TonemapExposureCompensation { get; set; } = 1.25f;
     public bool UseBloom { get; set; } = false;
     public float BloomIntensity { get; set; } = 0.1f;
     public bool UseSSAO { get; set; } = true;
