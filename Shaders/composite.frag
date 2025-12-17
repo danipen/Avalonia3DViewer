@@ -8,6 +8,7 @@ uniform sampler2D scene;
 uniform sampler2D bloomBlur;
 uniform sampler2D ssaoTexture;
 uniform float exposure;
+uniform float tonemapExposureCompensation;
 uniform bool useBloom;
 uniform bool useSSAO;
 uniform bool useTonemapping;
@@ -133,6 +134,9 @@ void main()
     
     // Apply exposure
     vec3 exposed = hdrColor * exposure;
+    if (useTonemapping) {
+        exposed *= tonemapExposureCompensation;
+    }
     
     // Tonemapping and color space conversion
     vec3 srgb;

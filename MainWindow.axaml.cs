@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     private Slider? _roughnessOffsetSlider;
     private Slider? _metallicOffsetSlider;
     private Slider? _iblIntensitySlider;
+    private Slider? _tonemapCompensationSlider;
     private TextBlock? _infoText;
     private Button? _runGcButton;
     
@@ -112,6 +113,7 @@ public partial class MainWindow : Window
         _roughnessOffsetSlider = this.FindControl<Slider>("RoughnessOffsetSlider");
         _metallicOffsetSlider = this.FindControl<Slider>("MetallicOffsetSlider");
         _iblIntensitySlider = this.FindControl<Slider>("IblIntensitySlider");
+        _tonemapCompensationSlider = this.FindControl<Slider>("TonemapCompensationSlider");
         _infoText = this.FindControl<TextBlock>("InfoText");
         _runGcButton = this.FindControl<Button>("RunGcButton");
         _modelComboBox = this.FindControl<ComboBox>("ModelComboBox");
@@ -142,6 +144,7 @@ public partial class MainWindow : Window
         SetSliderValue(_roughnessOffsetSlider, _viewport.RoughnessOffset);
         SetSliderValue(_metallicOffsetSlider, _viewport.MetallicOffset);
         SetSliderValue(_iblIntensitySlider, _viewport.IblIntensity);
+        SetSliderValue(_tonemapCompensationSlider, _viewport.TonemapExposureCompensation);
 
         SetCheckBoxValue(_keyLightFollowsCameraCheckBox, _viewport.KeyLightFollowsCamera);
         SetCheckBoxValue(_useShadowsCheckBox, _viewport.UseShadows);
@@ -157,6 +160,9 @@ public partial class MainWindow : Window
         SetRadioButtonValue(_backgroundDarkRadio, _viewport.UseDarkBackground);
 
         InitializeMsaaSamplesComboBox();
+        
+        if (_tonemapCompensationSlider != null)
+            _tonemapCompensationSlider.IsEnabled = _viewport.UseTonemapping;
     }
 
     private void InitializeMsaaSamplesComboBox()
@@ -223,6 +229,7 @@ public partial class MainWindow : Window
         BindSliderToViewport(_roughnessOffsetSlider, v => _viewport!.RoughnessOffset = v);
         BindSliderToViewport(_metallicOffsetSlider, v => _viewport!.MetallicOffset = v);
         BindSliderToViewport(_iblIntensitySlider, v => _viewport!.IblIntensity = v);
+        BindSliderToViewport(_tonemapCompensationSlider, v => _viewport!.TonemapExposureCompensation = v);
     }
 
     private void BindSliderToViewport(Slider? slider, Action<float> setter)
@@ -250,6 +257,18 @@ public partial class MainWindow : Window
 
         SetupMsaaCheckBoxHandler();
         SetupBackgroundRadioHandlers();
+        SetupTonemappingCheckBoxHandler();
+    }
+
+    private void SetupTonemappingCheckBoxHandler()
+    {
+        if (_useTonemappingCheckBox == null || _tonemapCompensationSlider == null) return;
+
+        _useTonemappingCheckBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property.Name != "IsChecked" || _viewport == null || !_useTonemappingCheckBox.IsChecked.HasValue) return;
+            _tonemapCompensationSlider.IsEnabled = _useTonemappingCheckBox.IsChecked.Value;
+        };
     }
 
     private void BindCheckBoxToViewport(CheckBox? checkBox, Action<bool> setter)

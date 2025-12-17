@@ -271,6 +271,13 @@
                                  Content="Enable Tonemapping" 
                                  Foreground="White"
                                  IsChecked="True"/>
+
+                        <TextBlock Text="Tonemap Compensation" Foreground="White" Margin="0,4,0,0"/>
+                        <Slider x:Name="TonemapCompensationSlider"
+                               Minimum="0.5"
+                               Maximum="2"
+                               Value="1.15"
+                               TickFrequency="0.01"/>
                         
                         <CheckBox x:Name="UseFXAACheckBox" 
                                  Content="Enable FXAA" 

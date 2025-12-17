@@ -89,6 +89,8 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
 
     // Rendering and lighting properties
     public float Exposure { get; set; } = 1.25f;
+    // Applied only when tonemapping is enabled (helps match perceived brightness when toggling tonemap).
+    public float TonemapExposureCompensation { get; set; } = 1.15f;
     public bool UseBloom { get; set; } = false;
     public float BloomIntensity { get; set; } = 0.1f;
     public bool UseSSAO { get; set; } = true;
@@ -594,6 +596,7 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
             _gl.Disable(EnableCap.DepthTest);
             _compositeShader!.Use();
             _compositeShader.SetUniform("exposure", Exposure);
+            _compositeShader.SetUniform("tonemapExposureCompensation", TonemapExposureCompensation);
             _compositeShader.SetUniform("useBloom", UseBloom);
             _compositeShader.SetUniform("useSSAO", UseSSAO);
             _compositeShader.SetUniform("useTonemapping", UseTonemapping);
