@@ -160,9 +160,8 @@ public partial class MainWindow : Window
         SetRadioButtonValue(_backgroundDarkRadio, _viewport.UseDarkBackground);
 
         InitializeMsaaSamplesComboBox();
-        
-        if (_tonemapCompensationSlider != null)
-            _tonemapCompensationSlider.IsEnabled = _viewport.UseTonemapping;
+
+        UpdateDependentControlEnabledStates();
     }
 
     private void InitializeMsaaSamplesComboBox()
@@ -172,6 +171,29 @@ public partial class MainWindow : Window
         int idx = _viewport.MsaaSamples switch { 2 => 0, 4 => 1, 8 => 2, _ => 1 };
         _msaaSamplesComboBox.SelectedIndex = idx;
         _msaaSamplesComboBox.IsEnabled = _viewport.UseMSAA;
+    }
+
+    private void UpdateDependentControlEnabledStates()
+    {
+        // These controls are only meaningful when their parent feature is enabled.
+        bool followCamera = _keyLightFollowsCameraCheckBox?.IsChecked == true;
+        bool shadows = _useShadowsCheckBox?.IsChecked == true;
+        bool bloom = _useBloomCheckBox?.IsChecked == true;
+        bool ssao = _useSSAOCheckBox?.IsChecked == true;
+        bool ibl = _useIBLCheckBox?.IsChecked == true;
+        bool tonemapping = _useTonemappingCheckBox?.IsChecked == true;
+
+        if (_keyLightSideBiasSlider != null) _keyLightSideBiasSlider.IsEnabled = followCamera;
+        if (_keyLightUpBiasSlider != null) _keyLightUpBiasSlider.IsEnabled = followCamera;
+        if (_shadowStrengthSlider != null) _shadowStrengthSlider.IsEnabled = shadows;
+        if (_bloomIntensitySlider != null) _bloomIntensitySlider.IsEnabled = bloom;
+        if (_ssaoIntensitySlider != null) _ssaoIntensitySlider.IsEnabled = ssao;
+        if (_iblIntensitySlider != null) _iblIntensitySlider.IsEnabled = ibl;
+        if (_tonemapCompensationSlider != null) _tonemapCompensationSlider.IsEnabled = tonemapping;
+
+        // Already handled elsewhere, but keeping it consistent if called from init.
+        if (_msaaSamplesComboBox != null && _useMSAACheckBox != null)
+            _msaaSamplesComboBox.IsEnabled = _useMSAACheckBox.IsChecked == true;
     }
 
     private static void SetSliderValue(Slider? slider, float value)
@@ -258,6 +280,29 @@ public partial class MainWindow : Window
         SetupMsaaCheckBoxHandler();
         SetupBackgroundRadioHandlers();
         SetupTonemappingCheckBoxHandler();
+        SetupDependentControlEnablingHandlers();
+    }
+
+    private void SetupDependentControlEnablingHandlers()
+    {
+        // Keep slider enabled/disabled states in sync with feature toggles.
+        HookIsCheckedChanged(_keyLightFollowsCameraCheckBox);
+        HookIsCheckedChanged(_useShadowsCheckBox);
+        HookIsCheckedChanged(_useBloomCheckBox);
+        HookIsCheckedChanged(_useSSAOCheckBox);
+        HookIsCheckedChanged(_useIBLCheckBox);
+        HookIsCheckedChanged(_useTonemappingCheckBox);
+        HookIsCheckedChanged(_useMSAACheckBox);
+
+        void HookIsCheckedChanged(CheckBox? checkBox)
+        {
+            if (checkBox == null) return;
+            checkBox.PropertyChanged += (_, e) =>
+            {
+                if (e.Property.Name != "IsChecked") return;
+                UpdateDependentControlEnabledStates();
+            };
+        }
     }
 
     private void SetupTonemappingCheckBoxHandler()
