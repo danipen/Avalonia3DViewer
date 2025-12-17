@@ -1411,9 +1411,13 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
             ? new Vector3(0.04f, 0.04f, 0.04f)
             : new Vector3(0.40f, 0.40f, 0.40f);
         
+        // The ground is a huge flat surface: even small specular reflections can reveal cubemap seams (looks like
+        // a "cube corner" in the floor). Make it fully matte for stability/readability.
+        _pbrShader!.SetUniform("specularScale", 0.0f);
+
         _pbrShader!.SetUniform("albedo", groundAlbedo);
         _pbrShader.SetUniform("metallic", 0.0f);
-        _pbrShader.SetUniform("roughness", 0.85f);
+        _pbrShader.SetUniform("roughness", 1.0f);
         _pbrShader.SetUniform("ao", 1.0f);
         _pbrShader.SetUniform("opacity", 1.0f);
         _pbrShader.SetUniform("alphaMode", AlphaOpaque);
@@ -1425,6 +1429,9 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         _pbrShader.SetUniform("useAOMap", false);
         
         _groundPlane.Draw();
+
+        // Restore global specular for subsequent draws (e.g. transparent meshes).
+        _pbrShader.SetUniform("specularScale", SpecularScale);
     }
     
     /// <summary>
