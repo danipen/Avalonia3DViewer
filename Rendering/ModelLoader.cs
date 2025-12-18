@@ -509,13 +509,10 @@ public static class ModelLoader
         cancellationToken.ThrowIfCancellationRequested();
 
         // Get node transformation
-        var assimpMatrix = node.Transform;
-        var transform = new Matrix4x4(
-            assimpMatrix.A1, assimpMatrix.B1, assimpMatrix.C1, assimpMatrix.D1,
-            assimpMatrix.A2, assimpMatrix.B2, assimpMatrix.C2, assimpMatrix.D2,
-            assimpMatrix.A3, assimpMatrix.B3, assimpMatrix.C3, assimpMatrix.D3,
-            assimpMatrix.A4, assimpMatrix.B4, assimpMatrix.C4, assimpMatrix.D4
-        );
+        // Assimp/AssimpNetter node transforms are effectively transposed vs how System.Numerics
+        // expects them when using Vector3.Transform (row-vector convention).
+        // We keep the previous behavior (from AssimpNet) by transposing here.
+        var transform = Matrix4x4.Transpose(node.Transform);
         
         var nodeTransform = transform * parentTransform;
         

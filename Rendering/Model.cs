@@ -48,7 +48,7 @@ public static class MaterialHelper
         if (!mat.HasColorDiffuse) return Vector3.One;
 
         var color = mat.ColorDiffuse;
-        var albedo = new Vector3(color.R, color.G, color.B);
+        var albedo = new Vector3(color.X, color.Y, color.Z);
         
         float brightness = (albedo.X + albedo.Y + albedo.Z) / 3.0f;
         if (brightness is < 0.02f and > 0.001f)
@@ -286,13 +286,10 @@ public class Model : IDisposable
     {
         var nodeTransform = parentTransform == default ? Matrix4x4.Identity : parentTransform;
         
-        var assimpMatrix = node.Transform;
-        var transform = new Matrix4x4(
-            assimpMatrix.A1, assimpMatrix.B1, assimpMatrix.C1, assimpMatrix.D1,
-            assimpMatrix.A2, assimpMatrix.B2, assimpMatrix.C2, assimpMatrix.D2,
-            assimpMatrix.A3, assimpMatrix.B3, assimpMatrix.C3, assimpMatrix.D3,
-            assimpMatrix.A4, assimpMatrix.B4, assimpMatrix.C4, assimpMatrix.D4
-        );
+        // Assimp/AssimpNetter node transforms are effectively transposed vs how System.Numerics
+        // expects them when using Vector3.Transform (row-vector convention).
+        // We keep the previous behavior (from AssimpNet) by transposing here.
+        var transform = Matrix4x4.Transpose(node.Transform);
         
         nodeTransform = transform * nodeTransform;
         
