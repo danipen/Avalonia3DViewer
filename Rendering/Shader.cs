@@ -51,7 +51,9 @@ public class Shader : IDisposable
         foreach (var (location, name) in DefaultAttribBindings)
             _gl.BindAttribLocation(_handle, location, name);
 
-        if (fragOutputBindings != null)
+        // NOTE: glBindFragDataLocation is not available in OpenGL ES 3.0.
+        // For GLES targets (ANGLE), we rely on cross-compiled shaders to emit layout(location=...) outputs instead.
+        if (fragOutputBindings != null && !ShaderTranspiler.IsOpenGLES(_gl))
         {
             foreach (var (location, name) in fragOutputBindings)
                 _gl.BindFragDataLocation(_handle, location, name);
@@ -129,6 +131,7 @@ public class Shader : IDisposable
     {
         var fullPath = ResolvePath(path);
         string src = File.ReadAllText(fullPath);
+        src = ShaderTranspiler.GetSourceForCurrentContext(_gl, type, fullPath, src);
         uint handle = _gl.CreateShader(type);
         _gl.ShaderSource(handle, src);
         _gl.CompileShader(handle);

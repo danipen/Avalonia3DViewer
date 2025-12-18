@@ -18,7 +18,9 @@
     <PackageReference Include="Silk.NET.OpenGL" Version="2.21.0" />
     <PackageReference Include="AssimpNetter" Version="6.0.2.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="SPIRV-Cross.NET" Version="1.0.2" />
     <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
+    <PackageReference Include="Veldrid.SPIRV" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup>
