@@ -13,6 +13,7 @@ using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Avalonia.Rendering;
 using Avalonia.Threading;
+using Silk.NET.Core.Native;
 using Silk.NET.OpenGL;
 using Avalonia3DViewer.Rendering;
 using Avalonia3DViewer.PostProcessing;
@@ -245,6 +246,28 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         base.OnOpenGlInit(gl);
 
         _gl = GL.GetApi(gl.GetProcAddress);
+
+        // Helpful diagnostics when running under ANGLE/OpenGL ES.
+        try
+        {
+            unsafe
+            {
+                var versionPtr = _gl.GetString(StringName.Version);
+                var vendorPtr = _gl.GetString(StringName.Vendor);
+                var rendererPtr = _gl.GetString(StringName.Renderer);
+                var slPtr = _gl.GetString(StringName.ShadingLanguageVersion);
+
+                Console.WriteLine($"[GL] Version: {SilkMarshal.PtrToString((nint)versionPtr)}");
+                Console.WriteLine($"[GL] Vendor: {SilkMarshal.PtrToString((nint)vendorPtr)}");
+                Console.WriteLine($"[GL] Renderer: {SilkMarshal.PtrToString((nint)rendererPtr)}");
+                Console.WriteLine($"[GL] GLSL: {SilkMarshal.PtrToString((nint)slPtr)}");
+                Console.WriteLine($"[GL] IsOpenGles: {ShaderCompat.IsOpenGlesContext(_gl)}");
+            }
+        }
+        catch
+        {
+            // Ignore diagnostic failures.
+        }
         
         _gl.Enable(EnableCap.DepthTest);
         _gl.DepthFunc(DepthFunction.Lequal);  // Use Lequal instead of Less for better decal handling

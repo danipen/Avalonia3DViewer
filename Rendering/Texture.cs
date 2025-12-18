@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.Text.RegularExpressions;
 using Silk.NET.OpenGL;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -23,6 +24,13 @@ public class Texture : IDisposable
     private const int GlMaxTextureMaxAnisotropyExt = 0x84FF;
     public const int MaxTextureSize = 2048;
 
+    // GLES internal formats/constants that are commonly missing/mis-mapped across profiles.
+    // - GL_SRGB8_ALPHA8 is required for GLES3 sRGB textures (GL_SRGB_ALPHA is not a valid TexImage2D internalformat in GLES3).
+    private const int GlSrgb8Alpha8 = 0x8C43;
+    private const int GlSrgbAlpha = 0x8C42;
+
+    private static readonly Regex GlesMajorRegex = new(@"OpenGL\s+ES\s+(?<major>\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     public Texture(GL gl, TextureTarget target = TextureTarget.Texture2D)
     {
         _gl = gl;
@@ -39,8 +47,9 @@ public class Texture : IDisposable
 
         texture.Bind();
         texture.UploadRgba32Image(img, srgb);
-        gl.GenerateMipmap(TextureTarget.Texture2D);
-        ApplyHighQualityFiltering(gl);
+        bool hasMipmaps = TryGenerateMipmaps(gl, img.Width, img.Height);
+        ApplyHighQualityFiltering(gl, img.Width, img.Height, hasMipmaps);
+        ThrowIfGlError(gl, $"Texture upload failed ({Path.GetFileName(path)})");
 
         return texture;
     }
@@ -55,17 +64,19 @@ public class Texture : IDisposable
         texture.PartialAlphaFraction = partialFrac;
         texture.IsMostlyBinaryAlpha = mostlyBinary;
 
+        int internalFormat = ChooseRgbaInternalFormat(gl, srgb);
         unsafe
         {
             fixed (byte* p = pixelData)
             {
-                gl.TexImage2D(TextureTarget.Texture2D, 0, srgb ? (int)InternalFormat.SrgbAlpha : (int)InternalFormat.Rgba8,
+                gl.TexImage2D(TextureTarget.Texture2D, 0, internalFormat,
                     (uint)width, (uint)height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, p);
             }
         }
 
-        gl.GenerateMipmap(TextureTarget.Texture2D);
-        ApplyHighQualityFiltering(gl);
+        bool hasMipmaps = TryGenerateMipmaps(gl, width, height);
+        ApplyHighQualityFiltering(gl, width, height, hasMipmaps);
+        ThrowIfGlError(gl, "Texture upload failed (pixel data)");
 
         return texture;
     }
@@ -99,8 +110,9 @@ public class Texture : IDisposable
 
         texture.Bind();
         texture.UploadRgba32ImageAsBytes(img, srgb);
-        gl.GenerateMipmap(TextureTarget.Texture2D);
-        ApplyHighQualityFiltering(gl);
+        bool hasMipmaps = TryGenerateMipmaps(gl, img.Width, img.Height);
+        ApplyHighQualityFiltering(gl, img.Width, img.Height, hasMipmaps);
+        ThrowIfGlError(gl, "Texture upload failed (memory)");
 
         return texture;
     }
@@ -122,7 +134,8 @@ public class Texture : IDisposable
             {
                 fixed (Rgba32* p = pixels)
                 {
-                    _gl.TexImage2D(TextureTarget.Texture2D, 0, srgb ? (int)InternalFormat.SrgbAlpha : (int)InternalFormat.Rgba8,
+                    int internalFormat = ChooseRgbaInternalFormat(_gl, srgb);
+                    _gl.TexImage2D(TextureTarget.Texture2D, 0, internalFormat,
                         (uint)img.Width, (uint)img.Height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, p);
                 }
             }
@@ -150,7 +163,8 @@ public class Texture : IDisposable
             {
                 fixed (byte* p = pixels)
                 {
-                    _gl.TexImage2D(TextureTarget.Texture2D, 0, srgb ? (int)InternalFormat.SrgbAlpha : (int)InternalFormat.Rgba8,
+                    int internalFormat = ChooseRgbaInternalFormat(_gl, srgb);
+                    _gl.TexImage2D(TextureTarget.Texture2D, 0, internalFormat,
                         (uint)img.Width, (uint)img.Height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, p);
                 }
             }
@@ -207,15 +221,28 @@ public class Texture : IDisposable
         Console.WriteLine($"[Texture] Downscaled HDR {path} to {newWidth}x{newHeight}");
     }
 
-    private static void ApplyHighQualityFiltering(GL gl)
+    private static void ApplyHighQualityFiltering(GL gl, int width, int height, bool hasMipmaps)
     {
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.Repeat);
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.Repeat);
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.LinearMipmapLinear);
+        bool isGles = ShaderCompat.IsOpenGlesContext(gl);
+        int glesMajor = isGles ? GetGlesMajorVersion(gl) : 0;
+
+        bool isPot = IsPowerOfTwo(width) && IsPowerOfTwo(height);
+
+        // GLES2 NPOT textures are commonly restricted: wrap must be CLAMP_TO_EDGE and mipmaps can't be used.
+        // Even on implementations that support NPOT, CLAMP_TO_EDGE is the most compatible default.
+        bool allowRepeat = !isGles || glesMajor >= 3 || isPot;
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)(allowRepeat ? GLEnum.Repeat : GLEnum.ClampToEdge));
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)(allowRepeat ? GLEnum.Repeat : GLEnum.ClampToEdge));
+
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)(hasMipmaps ? GLEnum.LinearMipmapLinear : GLEnum.Linear));
         gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
         
-        float maxAnisotropy = GetMaxAnisotropy(gl);
-        gl.TexParameter(TextureTarget.Texture2D, (TextureParameterName)GlTextureMaxAnisotropyExt, maxAnisotropy);
+        // Only apply anisotropy when the extension is present; otherwise this is a common GLES InvalidEnum.
+        if (HasExtension(gl, "GL_EXT_texture_filter_anisotropic") || HasExtension(gl, "GL_ARB_texture_filter_anisotropic"))
+        {
+            float maxAnisotropy = GetMaxAnisotropy(gl);
+            gl.TexParameter(TextureTarget.Texture2D, (TextureParameterName)GlTextureMaxAnisotropyExt, maxAnisotropy);
+        }
     }
 
     private static float GetMaxAnisotropy(GL gl)
@@ -229,6 +256,99 @@ public class Texture : IDisposable
         {
             return 16.0f;
         }
+    }
+
+    private static bool TryGenerateMipmaps(GL gl, int width, int height)
+    {
+        bool isGles = ShaderCompat.IsOpenGlesContext(gl);
+        int glesMajor = isGles ? GetGlesMajorVersion(gl) : 0;
+
+        // GLES2: avoid mipmaps on NPOT textures to prevent "incomplete texture" (samples as black).
+        if (isGles && glesMajor > 0 && glesMajor < 3)
+        {
+            if (!IsPowerOfTwo(width) || !IsPowerOfTwo(height))
+                return false;
+        }
+
+        gl.GenerateMipmap(TextureTarget.Texture2D);
+        return true;
+    }
+
+    private static int ChooseRgbaInternalFormat(GL gl, bool srgb)
+    {
+        bool isGles = ShaderCompat.IsOpenGlesContext(gl);
+        int glesMajor = isGles ? GetGlesMajorVersion(gl) : 0;
+
+        if (!isGles)
+            return srgb ? (int)InternalFormat.SrgbAlpha : (int)InternalFormat.Rgba8;
+
+        // GLES3: must use sized sRGB internal format for TexImage2D.
+        if (glesMajor >= 3)
+            return srgb ? GlSrgb8Alpha8 : (int)InternalFormat.Rgba8;
+
+        // GLES2: internalformat must generally match format (GL_RGBA). If EXT_sRGB exists, GL_SRGB_ALPHA_EXT is allowed.
+        if (srgb && HasExtension(gl, "GL_EXT_sRGB"))
+            return GlSrgbAlpha;
+
+        return (int)InternalFormat.Rgba;
+    }
+
+    private static bool HasExtension(GL gl, string ext)
+    {
+        try
+        {
+            unsafe
+            {
+                var ptr = gl.GetString(StringName.Extensions);
+                if (ptr == null) return false;
+                var s = Silk.NET.Core.Native.SilkMarshal.PtrToString((nint)ptr);
+                return s != null && s.IndexOf(ext, StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static int GetGlesMajorVersion(GL gl)
+    {
+        try
+        {
+            unsafe
+            {
+                var ptr = gl.GetString(StringName.Version);
+                if (ptr == null) return 0;
+                var version = Silk.NET.Core.Native.SilkMarshal.PtrToString((nint)ptr) ?? "";
+                var m = GlesMajorRegex.Match(version);
+                if (m.Success && int.TryParse(m.Groups["major"].Value, out int major))
+                    return major;
+            }
+        }
+        catch { /* ignore */ }
+        return 0;
+    }
+
+    private static bool IsPowerOfTwo(int x) => x > 0 && (x & (x - 1)) == 0;
+
+    private static void ThrowIfGlError(GL gl, string message)
+    {
+        // Capture the *first* error (most useful root cause), but drain them all so later checks are accurate.
+        var first = GLEnum.NoError;
+        int drained = 0;
+        while (drained < 32)
+        {
+            var err = gl.GetError();
+            if (err == GLEnum.NoError)
+                break;
+
+            if (first == GLEnum.NoError)
+                first = err;
+            drained++;
+        }
+
+        if (first != GLEnum.NoError)
+            throw new InvalidOperationException($"{message}: {first}");
     }
 
     private static void AnalyzeAlpha(ReadOnlySpan<Rgba32> pixels, out bool hasNonOpaqueAlpha, out float partialAlphaFraction, out bool isMostlyBinaryAlpha)
