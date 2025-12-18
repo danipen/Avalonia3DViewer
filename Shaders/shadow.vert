@@ -1,5 +1,3 @@
-#version 150
-
 in vec3 aPosition;
 
 uniform mat4 lightSpaceMatrix;

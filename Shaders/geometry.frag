@@ -1,5 +1,3 @@
-#version 150
-
 out vec4 gPosition;
 out vec4 gNormal;
 out vec4 gAlbedo;
