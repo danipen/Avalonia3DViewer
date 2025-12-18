@@ -105,11 +105,11 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
     public float ShadowCatcherOpacity { get; set; } = 1.0f;
     
     // Light intensities - increased for better illumination
-    public float MainLightIntensity { get; set; } = 5.0f;
-    public float FillLightIntensity { get; set; } = 2.5f;
+    public float MainLightIntensity { get; set; } = 3.5f;
+    public float FillLightIntensity { get; set; } = 2f;
     public float RimLightIntensity { get; set; } = 0.75f;
     public float TopLightIntensity { get; set; } = 2.4f;
-    public float AmbientIntensity { get; set; } = 0.4f;
+    public float AmbientIntensity { get; set; } = 0.35f;
     
     // Shadow properties
     public bool UseShadows { get; set; } = true;
