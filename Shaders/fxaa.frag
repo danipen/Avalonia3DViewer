@@ -13,7 +13,7 @@ uniform float fxaaReduceMin;        // default 1/128
 
 void main()
 {
-    vec2 texelSize = 1.0 / textureSize(screenTexture, 0);
+    vec2 texelSize = 1.0 / vec2(textureSize(screenTexture, 0));
     
     vec3 rgbNW = texture(screenTexture, TexCoord + vec2(-1.0, -1.0) * texelSize).rgb;
     vec3 rgbNE = texture(screenTexture, TexCoord + vec2(1.0, -1.0) * texelSize).rgb;

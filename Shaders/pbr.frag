@@ -239,7 +239,7 @@ float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDirection)
     
     // PCSS-style variable penumbra (simplified)
     float shadow = 0.0;
-    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
     float diskRadius = 3.0; // Penumbra size
     
     // Poisson disk sampling for smooth shadows
