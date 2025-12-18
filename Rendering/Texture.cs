@@ -297,6 +297,44 @@ public class Texture : IDisposable
     {
         try
         {
+            // IMPORTANT:
+            // - On desktop OpenGL *core profiles*, glGetString(GL_EXTENSIONS) is invalid; must use glGetStringi.
+            // - On OpenGL ES, glGetString(GL_EXTENSIONS) is fine.
+            bool isGles = ShaderCompat.IsOpenGlesContext(gl);
+
+            if (!isGles)
+            {
+                // Desktop GL: try glGetStringi path first (core-profile safe).
+                // GL_NUM_EXTENSIONS = 0x821D
+                const int GlNumExtensions = 0x821D;
+                int numExt = 0;
+                try
+                {
+                    numExt = gl.GetInteger((GLEnum)GlNumExtensions);
+                }
+                catch
+                {
+                    numExt = 0;
+                }
+
+                if (numExt > 0)
+                {
+                    unsafe
+                    {
+                        for (uint i = 0; i < (uint)numExt; i++)
+                        {
+                            var p = gl.GetStringi(StringName.Extensions, i);
+                            var s = Silk.NET.Core.Native.SilkMarshal.PtrToString((nint)p);
+                            if (s != null && s.Equals(ext, StringComparison.OrdinalIgnoreCase))
+                                return true;
+                        }
+                    }
+                    return false;
+                }
+
+                // Fallback (very old compatibility profiles): try glGetString(GL_EXTENSIONS).
+            }
+
             unsafe
             {
                 var ptr = gl.GetString(StringName.Extensions);
