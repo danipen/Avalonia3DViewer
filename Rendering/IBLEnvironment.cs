@@ -61,8 +61,10 @@ public class IBLEnvironment : IDisposable
 
     private unsafe void CreateDummyTextures()
     {
-        float[] blackPixel = { 0.0f, 0.0f, 0.0f };
-        float[] whitePixel = { 1.0f, 1.0f, 1.0f };
+        // NOTE: On ANGLE/GLES3 (D3D11 backend), RGB16F is frequently unsupported while RGBA16F is supported.
+        // Using RGBA16F keeps it portable; shaders sample .rgb and ignore alpha.
+        float[] blackPixel = { 0.0f, 0.0f, 0.0f, 1.0f };
+        float[] whitePixel = { 1.0f, 1.0f, 1.0f, 1.0f };
 
         IrradianceMap = CreateDummyCubemap(blackPixel);
         PrefilterMap = CreateDummyCubemap(blackPixel);
@@ -78,8 +80,8 @@ public class IBLEnvironment : IDisposable
         {
             for (uint i = 0; i < 6; i++)
             {
-                _gl.TexImage2D(TextureTarget.TextureCubeMapPositiveX + (int)i, 0, (int)InternalFormat.Rgb16f,
-                    1, 1, 0, PixelFormat.Rgb, PixelType.Float, ptr);
+                _gl.TexImage2D(TextureTarget.TextureCubeMapPositiveX + (int)i, 0, (int)InternalFormat.Rgba16f,
+                    1, 1, 0, PixelFormat.Rgba, PixelType.Float, ptr);
             }
         }
 
@@ -99,8 +101,8 @@ public class IBLEnvironment : IDisposable
         
         fixed (float* ptr = pixel)
         {
-            _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgb16f, 1, 1, 0,
-                PixelFormat.Rgb, PixelType.Float, ptr);
+            _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba16f, 1, 1, 0,
+                PixelFormat.Rgba, PixelType.Float, ptr);
         }
 
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
@@ -164,8 +166,8 @@ public class IBLEnvironment : IDisposable
 
         for (uint i = 0; i < 6; i++)
         {
-            _gl.TexImage2D(TextureTarget.TextureCubeMapPositiveX + (int)i, 0, (int)InternalFormat.Rgb16f,
-                resolution, resolution, 0, PixelFormat.Rgb, PixelType.Float, null);
+            _gl.TexImage2D(TextureTarget.TextureCubeMapPositiveX + (int)i, 0, (int)InternalFormat.Rgba16f,
+                resolution, resolution, 0, PixelFormat.Rgba, PixelType.Float, null);
         }
 
         _gl.TexParameter(TextureTarget.TextureCubeMap, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);

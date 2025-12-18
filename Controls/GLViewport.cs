@@ -246,6 +246,7 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         base.OnOpenGlInit(gl);
 
         _gl = GL.GetApi(gl.GetProcAddress);
+        bool isOpenGles = false;
 
         // Helpful diagnostics when running under ANGLE/OpenGL ES.
         try
@@ -261,27 +262,36 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
                 Console.WriteLine($"[GL] Vendor: {SilkMarshal.PtrToString((nint)vendorPtr)}");
                 Console.WriteLine($"[GL] Renderer: {SilkMarshal.PtrToString((nint)rendererPtr)}");
                 Console.WriteLine($"[GL] GLSL: {SilkMarshal.PtrToString((nint)slPtr)}");
-                Console.WriteLine($"[GL] IsOpenGles: {ShaderCompat.IsOpenGlesContext(_gl)}");
+                isOpenGles = ShaderCompat.IsOpenGlesContext(_gl);
+                Console.WriteLine($"[GL] IsOpenGles: {isOpenGles}");
             }
         }
         catch
         {
             // Ignore diagnostic failures.
         }
+
+        DrainGlErrors(_gl, "After context creation");
         
         _gl.Enable(EnableCap.DepthTest);
         _gl.DepthFunc(DepthFunction.Lequal);  // Use Lequal instead of Less for better decal handling
+        DrainGlErrors(_gl, "After depth state");
 
-        // Enable multisampling for better quality
-        _gl.Enable(EnableCap.Multisample);
+        // Desktop GL has GL_MULTISAMPLE; OpenGL ES does not allow enabling/disabling it (ANGLE returns InvalidEnum).
+        // MSAA is handled by multisampled renderbuffers/textures and the context configuration.
+        if (!isOpenGles)
+            _gl.Enable(EnableCap.Multisample);
+        DrainGlErrors(_gl, "After multisample enable");
         
         // Enable backface culling for better performance
         _gl.Enable(EnableCap.CullFace);
         _gl.CullFace(TriangleFace.Back);
+        DrainGlErrors(_gl, "After cull state");
         
         // Enable blending for transparency
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+        DrainGlErrors(_gl, "After blend state");
         
         // Initialize camera
         _camera = new Camera
@@ -294,30 +304,43 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         try
         {
             _pbrShader = new ShaderProgram(_gl, "Shaders/pbr.vert", "Shaders/pbr.frag");
+            DrainGlErrors(_gl, "After PBR shader");
             
             // Load default environment
             _iblEnvironment = new IBLEnvironment(_gl);
+            DrainGlErrors(_gl, "After IBLEnvironment init");
             
             // Create procedural HDRI as fallback
             _proceduralHDRI = new ProceduralHDRI(_gl);
+            DrainGlErrors(_gl, "After ProceduralHDRI init");
             
             // Initialize post-processing effects with physical pixel dimensions
             var (width, height) = GetPhysicalPixelSize();
             _lastRenderScaling = VisualRoot?.RenderScaling ?? 1.0;
             
             _screenQuad = new ScreenQuad(_gl);
+            DrainGlErrors(_gl, "After ScreenQuad init");
             _gBuffer = new GBuffer(_gl, width, height);
+            DrainGlErrors(_gl, "After GBuffer init");
             _ssaoEffect = new SSAOEffect(_gl, width, height);
+            DrainGlErrors(_gl, "After SSAO init");
             _bloomEffect = new BloomEffect(_gl, width, height);
+            DrainGlErrors(_gl, "After Bloom init");
             _shadowMap = new ShadowMap(_gl);
+            DrainGlErrors(_gl, "After ShadowMap init");
             _fxaaEffect = new FXAAEffect(_gl);
+            DrainGlErrors(_gl, "After FXAA init");
             _blitEffect = new BlitEffect(_gl);
+            DrainGlErrors(_gl, "After Blit init");
             _compositeShader = new Rendering.Shader(_gl, "Shaders/screen_quad.vert", "Shaders/composite.frag");
+            DrainGlErrors(_gl, "After Composite shader init");
             
             
             // Create HDR framebuffer for main rendering
             CreateHDRFramebuffer(width, height);
+            DrainGlErrors(_gl, "After HDR framebuffer creation");
             CreateFinalFramebuffer(width, height);
+            DrainGlErrors(_gl, "After Final framebuffer creation");
             
             // Create test triangle to verify rendering works
             var testVertices = new Vertex[]
@@ -328,6 +351,7 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
             };
             var testIndices = new uint[] { 0, 1, 2 };
             _testTriangle = new Mesh(_gl, testVertices, testIndices);
+            DrainGlErrors(_gl, "After test triangle mesh creation");
             
             // Ground plane will be created dynamically when model is loaded
             _groundPlane = null;
@@ -343,6 +367,19 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         {
             Console.WriteLine($"[GLViewport] ERROR initializing GL: {ex.Message}");
             Console.WriteLine($"[GLViewport] Stack trace: {ex.StackTrace}");
+        }
+    }
+
+    private static void DrainGlErrors(GL gl, string label)
+    {
+        int drained = 0;
+        while (drained < 32)
+        {
+            var err = gl.GetError();
+            if (err == GLEnum.NoError)
+                return;
+            drained++;
+            Console.WriteLine($"[GL] ERROR ({label}): {err}");
         }
     }
 
