@@ -26,11 +26,28 @@ public class LoadedMaterialTextures : IDisposable
     }
 }
 
+/// <summary>
+/// Alpha blending mode - matches glTF specification
+/// </summary>
+public enum AlphaMode
+{
+    /// <summary>Alpha is ignored, rendered as fully opaque</summary>
+    Opaque = 0,
+    /// <summary>Alpha cutout/test - fragments below cutoff are discarded</summary>
+    Mask = 1,
+    /// <summary>True alpha blending with background</summary>
+    Blend = 2,
+    /// <summary>No explicit alpha mode specified - use heuristics</summary>
+    Unknown = -1
+}
+
 public static class MaterialHelper
 {
     private const string GltfMetallicFactor = "$mat.gltf.pbrMetallicRoughness.metallicFactor";
     private const string GltfRoughnessFactor = "$mat.gltf.pbrMetallicRoughness.roughnessFactor";
     private const string GltfBaseColorFactor = "$mat.gltf.pbrMetallicRoughness.baseColorFactor";
+    private const string GltfAlphaMode = "$mat.gltf.alphaMode";
+    private const string GltfAlphaCutoff = "$mat.gltf.alphaCutoff";
     private const string AiMatKeyMetallicFactor = "$mat.metallicFactor";
     private const string AiMatKeyRoughnessFactor = "$mat.roughnessFactor";
 
@@ -91,6 +108,40 @@ public static class MaterialHelper
     public static float GetOpacity(Assimp.Material mat) => mat.HasOpacity ? mat.Opacity : 1.0f;
 
     public static float GetAO(Assimp.Material mat) => 1.0f;
+
+    /// <summary>
+    /// Gets the glTF alpha mode from the material properties.
+    /// Returns Unknown if the property is not present (non-glTF formats).
+    /// </summary>
+    public static AlphaMode GetGltfAlphaMode(Assimp.Material mat)
+    {
+        foreach (var prop in mat.GetAllProperties())
+        {
+            if (prop.Name != GltfAlphaMode || prop.PropertyType != PropertyType.String)
+                continue;
+            
+            string mode = prop.GetStringValue();
+            return mode?.ToUpperInvariant() switch
+            {
+                "OPAQUE" => AlphaMode.Opaque,
+                "MASK" => AlphaMode.Mask,
+                "BLEND" => AlphaMode.Blend,
+                _ => AlphaMode.Unknown
+            };
+        }
+        return AlphaMode.Unknown;
+    }
+
+    /// <summary>
+    /// Gets the glTF alpha cutoff value for MASK mode.
+    /// Returns 0.5 (glTF default) if not specified.
+    /// </summary>
+    public static float GetGltfAlphaCutoff(Assimp.Material mat)
+    {
+        if (TryGetFloatProperty(mat, GltfAlphaCutoff, out float cutoff))
+            return Math.Clamp(cutoff, 0.0f, 1.0f);
+        return 0.5f; // glTF default
+    }
 
     private static bool TryGetFloatProperty(Assimp.Material mat, string key, out float value)
     {

@@ -1114,10 +1114,41 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         {
             alphaCutoff = DefaultAlphaCutoff;
 
-            float opacity = MaterialHelper.GetOpacity(assimpMaterial);
-            if (opacity < 0.99f)
+            // PRIORITY 1: Check for explicit glTF alphaMode property
+            // This is the authoritative source for glTF/GLB files
+            var gltfMode = MaterialHelper.GetGltfAlphaMode(assimpMaterial);
+            if (gltfMode != Rendering.AlphaMode.Unknown)
+            {
+                alphaCutoff = MaterialHelper.GetGltfAlphaCutoff(assimpMaterial);
+                float opacity = MaterialHelper.GetOpacity(assimpMaterial);
+                
+                // Special case: BLEND with full material opacity (1.0) often means the material
+                // uses a texture atlas with alpha for decals/cutouts on otherwise opaque geometry.
+                // Treat as MASK to get crisp cutouts and proper depth handling instead of
+                // unwanted semi-transparency on opaque parts.
+                if (gltfMode == Rendering.AlphaMode.Blend && opacity >= 0.99f)
+                {
+                    // Use a lower alpha cutoff to preserve more detail in decals
+                    alphaCutoff = Math.Max(alphaCutoff, 0.1f);
+                    return AlphaMask;
+                }
+                
+                return gltfMode switch
+                {
+                    Rendering.AlphaMode.Opaque => AlphaOpaque,
+                    Rendering.AlphaMode.Mask => AlphaMask,
+                    Rendering.AlphaMode.Blend => AlphaBlend,
+                    _ => AlphaOpaque
+                };
+            }
+
+            // PRIORITY 2: For non-glTF formats, use heuristics
+            // Check material opacity first
+            float matOpacity = MaterialHelper.GetOpacity(assimpMaterial);
+            if (matOpacity < 0.99f)
                 return AlphaBlend;
 
+            // Check texture alpha
             var albedoTex = loadedTextures.AlbedoMap;
             if (albedoTex != null && albedoTex.HasNonOpaqueAlpha)
             {
@@ -1216,10 +1247,10 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         // Transparent meshes often render with depth writes disabled; drawing the ground after that can overwrite glass.
         RenderGroundPlane();
 
-        // Draw blended transparent meshes back-to-front (blending on, no depth writes)
+        // Draw blended transparent meshes back-to-front
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
-        _gl.DepthMask(false);
+        
         var camPos = _camera.Position;
         var transparentMeshes = _model.Meshes
             .Select((mesh, index) => new { mesh, index })
@@ -1234,9 +1265,17 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
                 }
                 return false;
             })
-            .OrderByDescending(x => Vector3.Distance(camPos, _model.Center))
+            .OrderByDescending(x => {
+                // Sort by each mesh's center distance to camera for proper back-to-front ordering
+                var bounds = x.mesh.GetBounds();
+                var meshCenter = (bounds.Min + bounds.Max) * 0.5f;
+                return Vector3.Distance(camPos, meshCenter);
+            })
             .ToList();
 
+        // Disable face culling for transparent pass - interior geometry often needs both sides visible
+        _gl.Disable(EnableCap.CullFace);
+        
         foreach (var item in transparentMeshes)
         {
             var mesh = item.mesh;
@@ -1245,6 +1284,24 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
 
             int alphaMode = ResolveAlphaMode(assimpMaterial, loadedTextures, out float alphaCutoff);
             SetupMaterialUniforms(assimpMaterial, loadedTextures, alphaMode, alphaCutoff);
+            
+            // Determine if this is "truly transparent" (glass-like) or "texture-alpha transparent" (decals on opaque)
+            // - Truly transparent: material opacity < 1.0 → disable depth writes (glass, etc.)
+            // - Texture-alpha: material opacity = 1.0 but texture has alpha → keep depth writes for opaque fragments
+            float materialOpacity = MaterialHelper.GetOpacity(assimpMaterial);
+            bool isTrulyTransparent = materialOpacity < 0.99f;
+            
+            if (isTrulyTransparent)
+            {
+                // Glass-like: disable depth writes so objects behind show through
+                _gl.DepthMask(false);
+            }
+            else
+            {
+                // Texture-alpha materials (like car interior with decals): 
+                // Keep depth writes so opaque fragments properly occlude
+                _gl.DepthMask(true);
+            }
 
             mesh.Draw();
             meshCount++;
@@ -1252,6 +1309,7 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
 
         _gl.DepthMask(true);
         _gl.Disable(EnableCap.Blend);
+        _gl.Enable(EnableCap.CullFace);
     }
     
     /// <summary>
