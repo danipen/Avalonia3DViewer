@@ -319,15 +319,13 @@ public class Texture : IDisposable
 
                 if (numExt > 0)
                 {
-                    unsafe
+                    // Silk.NET exposes glGetStringi via GetStringS(StringName, uint index).
+                    // This path is required for desktop core profiles (e.g. macOS).
+                    for (uint i = 0; i < (uint)numExt; i++)
                     {
-                        for (uint i = 0; i < (uint)numExt; i++)
-                        {
-                            var p = gl.GetStringi(StringName.Extensions, i);
-                            var s = Silk.NET.Core.Native.SilkMarshal.PtrToString((nint)p);
-                            if (s != null && s.Equals(ext, StringComparison.OrdinalIgnoreCase))
-                                return true;
-                        }
+                        var s = gl.GetStringS(StringName.Extensions, i);
+                        if (s != null && s.Equals(ext, StringComparison.OrdinalIgnoreCase))
+                            return true;
                     }
                     return false;
                 }
