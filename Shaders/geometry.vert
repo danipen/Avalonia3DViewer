@@ -2,12 +2,9 @@ in vec3 aPos;
 in vec3 aNormal;
 in vec2 aTexCoord;
 
-out VS_OUT
-{
-    vec3 FragPosView;
-    vec3 NormalView;
-    vec2 TexCoord;
-} vs_out;
+out vec3 vFragPosView;
+out vec3 vNormalView;
+out vec2 vTexCoord;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -19,12 +16,12 @@ void main()
     vec4 viewPos  = view * worldPos;
 
     // View-space position & normal (for SSAO)
-    vs_out.FragPosView = viewPos.xyz;
+    vFragPosView = viewPos.xyz;
 
     mat3 normalMatrix = mat3(transpose(inverse(view * model)));
-    vs_out.NormalView = normalize(normalMatrix * aNormal);
+    vNormalView = normalize(normalMatrix * aNormal);
 
-    vs_out.TexCoord = aTexCoord;
+    vTexCoord = aTexCoord;
 
     gl_Position = projection * viewPos;
 }

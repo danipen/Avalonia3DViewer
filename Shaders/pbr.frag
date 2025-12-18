@@ -1,11 +1,9 @@
 out vec4 FragColor;
 
-in VS_OUT {
-    vec3 FragPos;
-    vec3 Normal;
-    vec2 TexCoord;
-    mat3 TBN;
-} fs_in;
+in vec3 vFragPos;
+in vec3 vNormal;
+in vec2 vTexCoord;
+in mat3 vTBN;
 
 // Material properties
 uniform sampler2D albedoMap;
@@ -152,11 +150,11 @@ vec3 fresnelSchlickRoughness(float NdotV, vec3 F0, float roughness)
 
 vec3 getNormalFromMap()
 {
-    vec3 tangentNormal = texture(normalMap, fs_in.TexCoord).xyz;
+    vec3 tangentNormal = texture(normalMap, vTexCoord).xyz;
     // Handle both [0,1] and [-1,1] encoded normals
     tangentNormal = tangentNormal * 2.0 - 1.0;
     // Ensure normal is normalized (fixes issues with compressed textures)
-    return normalize(fs_in.TBN * tangentNormal);
+    return normalize(vTBN * tangentNormal);
 }
 
 // ============================================================================
@@ -247,7 +245,7 @@ float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDirection)
     // Poisson disk sampling for smooth shadows
     for (int i = 0; i < 16; ++i)
     {
-        int index = int(16.0 * random(fs_in.FragPos, i)) % 16;
+        int index = int(16.0 * random(vFragPos, i)) % 16;
         float pcfDepth = texture(shadowMap, projCoords.xy + poissonDisk[index] * texelSize * diskRadius).r;
         shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
     }
@@ -350,11 +348,11 @@ void main()
     // Important: we still compute the shadow value so contact shadows appear.
     if (shadowCatcher)
     {
-        vec3 N = normalize(fs_in.Normal);
+        vec3 N = normalize(vNormal);
         float shadow = 0.0;
         if (useShadows)
         {
-            vec4 fragPosLightSpace = lightSpaceMatrix * vec4(fs_in.FragPos, 1.0);
+            vec4 fragPosLightSpace = lightSpaceMatrix * vec4(vFragPos, 1.0);
             shadow = calculateShadow(fragPosLightSpace, N, normalize(lightDir));
         }
 
@@ -368,7 +366,7 @@ void main()
     // NOTE: If albedo texture was loaded with sRGB internal format, the GPU already
     // converts to linear space on sampling. If not (Rgba8), we need manual conversion.
     // Currently using sRGB format, so texture() returns linear values directly.
-    vec4 albedoTexture = useAlbedoMap ? texture(albedoMap, fs_in.TexCoord) : vec4(albedo, 1.0);
+    vec4 albedoTexture = useAlbedoMap ? texture(albedoMap, vTexCoord) : vec4(albedo, 1.0);
     vec3 albedoSample = albedoTexture.rgb;
     float texAlpha = albedoTexture.a;
     
@@ -406,9 +404,9 @@ void main()
         return;
     }
     
-    float metallicSample = useMetallicMap ? texture(metallicMap, fs_in.TexCoord).r : metallic;
-    float roughnessSample = useRoughnessMap ? texture(roughnessMap, fs_in.TexCoord).r : roughness;
-    float aoSample = useAOMap ? texture(aoMap, fs_in.TexCoord).r : ao;
+    float metallicSample = useMetallicMap ? texture(metallicMap, vTexCoord).r : metallic;
+    float roughnessSample = useRoughnessMap ? texture(roughnessMap, vTexCoord).r : roughness;
+    float aoSample = useAOMap ? texture(aoMap, vTexCoord).r : ao;
     
     // Apply material overrides from UI controls
     metallicSample = clamp(metallicSample + metallicOffset, 0.0, 1.0);
@@ -418,8 +416,8 @@ void main()
     roughnessSample = clamp(roughnessSample, MIN_ROUGHNESS, 1.0);
     
     // Get surface normal
-    vec3 N = useNormalMap ? getNormalFromMap() : normalize(fs_in.Normal);
-    vec3 V = normalize(camPos - fs_in.FragPos);
+    vec3 N = useNormalMap ? getNormalFromMap() : normalize(vNormal);
+    vec3 V = normalize(camPos - vFragPos);
     vec3 R = reflect(-V, N);
     
     // Calculate F0 (reflectance at normal incidence)
@@ -432,7 +430,7 @@ void main()
     // Calculate shadow (used in both IBL and non-IBL paths)
     float shadow = 0.0;
     if (useShadows) {
-        vec4 fragPosLightSpace = lightSpaceMatrix * vec4(fs_in.FragPos, 1.0);
+        vec4 fragPosLightSpace = lightSpaceMatrix * vec4(vFragPos, 1.0);
         shadow = calculateShadow(fragPosLightSpace, N, normalize(lightDir));
     }
     
