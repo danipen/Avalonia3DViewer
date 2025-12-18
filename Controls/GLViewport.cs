@@ -333,7 +333,7 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
             _groundPlane = null;
             
             // Auto-load model for autonomous testing
-            string autoLoadPath = "../../../1969_dodge_charger_rt.glb";
+            string autoLoadPath = "../../../sample-models/1969_dodge_charger_rt.glb";
             if (File.Exists(autoLoadPath))
             {
                 _pendingModelPath = autoLoadPath;
