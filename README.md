@@ -1,6 +1,8 @@
 # Avalonia 3D Viewer
 
-A cross-platform, real-time 3D model viewer built with [Avalonia UI](https://avaloniaui.net/) and OpenGL. It features a physically-based rendering (PBR) pipeline with image-based lighting, post-processing effects, and an interactive control panel — all running natively on Windows, macOS, and Linux.
+A cross-platform, real-time 3D model viewer built with [Avalonia UI](https://avaloniaui.net/) and OpenGL.
+
+![Demo](demo.gif) It features a physically-based rendering (PBR) pipeline with image-based lighting, post-processing effects, and an interactive control panel — all running natively on Windows, macOS, and Linux.
 
 ---
 
