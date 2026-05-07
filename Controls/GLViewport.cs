@@ -199,6 +199,7 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         //this.Background = Brushes.Transparent;
 
         Focusable = true;
+        AddHandler(Gestures.PointerTouchPadGestureMagnifyEvent, OnTouchPadMagnify);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -753,12 +754,36 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
-        
-        if (_camera != null)
+
+        if (_camera == null)
+            return;
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            // Shift + wheel / two-finger drag = pan.
+            // Wheel deltas are tiny (≈1 per mouse notch, fractional per trackpad event),
+            // so scale up to feel comparable to middle-click pixel drag.
+            const float panScale = 30f;
+            _camera.Pan(-(float)e.Delta.X * panScale, (float)e.Delta.Y * panScale);
+        }
+        else
         {
             _camera.Zoom((float)e.Delta.Y);
-            RequestNextFrameRendering();
         }
+
+        RequestNextFrameRendering();
+    }
+
+    private void OnTouchPadMagnify(object? sender, PointerDeltaEventArgs e)
+    {
+        if (_camera == null) return;
+
+        // On macOS, NSEvent magnify gesture delivers per-frame magnification delta in Delta.X
+        // (small values like 0.01–0.1; positive = fingers spreading = zoom in).
+        float magnify = (float)e.Delta.X;
+        _camera.Zoom(magnify * 10f);
+        RequestNextFrameRendering();
+        e.Handled = true;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
