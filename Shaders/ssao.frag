@@ -1,5 +1,3 @@
-#version 150
-
 out float FragColor;
 
 in vec2 TexCoord;

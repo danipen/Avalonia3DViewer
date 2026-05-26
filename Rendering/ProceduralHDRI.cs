@@ -65,10 +65,15 @@ public class ProceduralHDRI : IDisposable
 
     private unsafe void UploadCubemapFace(int face, int size, Vector3[] colors)
     {
-        fixed (Vector3* ptr = colors)
+        // ANGLE/GLES3 commonly supports RGBA16F but not RGB16F. Upload as RGBA16F with alpha=1.
+        var rgba = new Vector4[colors.Length];
+        for (int i = 0; i < colors.Length; i++)
+            rgba[i] = new Vector4(colors[i], 1.0f);
+
+        fixed (Vector4* ptr = rgba)
         {
-            _gl.TexImage2D(TextureTarget.TextureCubeMapPositiveX + face, 0, (int)InternalFormat.Rgb16f,
-                (uint)size, (uint)size, 0, PixelFormat.Rgb, PixelType.Float, ptr);
+            _gl.TexImage2D(TextureTarget.TextureCubeMapPositiveX + face, 0, (int)InternalFormat.Rgba16f,
+                (uint)size, (uint)size, 0, PixelFormat.Rgba, PixelType.Float, ptr);
         }
     }
 

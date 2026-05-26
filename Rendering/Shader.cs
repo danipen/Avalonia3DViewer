@@ -9,6 +9,7 @@ public class Shader : IDisposable
     private readonly GL _gl;
     private uint _handle;
     private bool _disposed;
+    private readonly bool _isOpenGles;
 
     // Binding conventions used by this project (keeps VAO setup simple and GLSL 150-compatible).
     // NOTE: BindAttribLocation must happen BEFORE linking.
@@ -25,9 +26,10 @@ public class Shader : IDisposable
     public Shader(GL gl, string vertexPath, string fragmentPath, (uint location, string name)[]? fragOutputBindings = null)
     {
         _gl = gl;
+        _isOpenGles = ShaderCompat.IsOpenGlesContext(_gl);
 
-        uint vertex = LoadShader(ShaderType.VertexShader, vertexPath);
-        uint fragment = LoadShader(ShaderType.FragmentShader, fragmentPath);
+        uint vertex = LoadShader(ShaderType.VertexShader, vertexPath, isFragment: false, fragOutputBindings: null);
+        uint fragment = LoadShader(ShaderType.FragmentShader, fragmentPath, isFragment: true, fragOutputBindings: fragOutputBindings);
 
         _handle = _gl.CreateProgram();
         _gl.AttachShader(_handle, vertex);
@@ -51,7 +53,9 @@ public class Shader : IDisposable
         foreach (var (location, name) in DefaultAttribBindings)
             _gl.BindAttribLocation(_handle, location, name);
 
-        if (fragOutputBindings != null)
+        // Desktop GL: bind frag outputs explicitly (needed for GLSL 150 which doesn't support layout(location=...)).
+        // OpenGL ES: glBindFragDataLocation is not available; we inject layout qualifiers in the shader source instead.
+        if (!_isOpenGles && fragOutputBindings != null)
         {
             foreach (var (location, name) in fragOutputBindings)
                 _gl.BindFragDataLocation(_handle, location, name);
@@ -125,10 +129,11 @@ public class Shader : IDisposable
         return Path.Combine(AppContext.BaseDirectory, path);
     }
 
-    private uint LoadShader(ShaderType type, string path)
+    private uint LoadShader(ShaderType type, string path, bool isFragment, (uint location, string name)[]? fragOutputBindings)
     {
         var fullPath = ResolvePath(path);
-        string src = File.ReadAllText(fullPath);
+        string raw = File.ReadAllText(fullPath);
+        string src = ShaderCompat.BuildSource(raw, isFragment, _isOpenGles, fragOutputBindings);
         uint handle = _gl.CreateShader(type);
         _gl.ShaderSource(handle, src);
         _gl.CompileShader(handle);

@@ -20,6 +20,7 @@ public class Mesh : IDisposable
     private uint _vbo;
     private uint _ebo;
     private readonly int _indexCount;
+    private readonly DrawElementsType _indexType;
     private Vertex[]? _vertices;
     private bool _disposed;
     
@@ -39,9 +40,13 @@ public class Mesh : IDisposable
         CalculateAndCacheBounds(vertices);
         _vertices = keepVertices ? vertices : null;
 
+        // Prefer 16-bit indices when possible (more compatible on GLES2 and smaller).
+        // We decide index type up-front so DrawElements uses the correct type.
+        _indexType = ChooseIndexType(gl, indices, out var indicesU16);
+
         try
         {
-            CreateBuffers(vertices, indices);
+            CreateBuffers(vertices, indices, indicesU16);
         }
         catch (Exception ex)
         {
@@ -50,8 +55,10 @@ public class Mesh : IDisposable
         }
     }
 
-    private void CreateBuffers(Vertex[] vertices, uint[] indices)
+    private void CreateBuffers(Vertex[] vertices, uint[] indicesU32, ushort[]? indicesU16)
     {
+        DrainGlErrors("[Mesh] Pre-existing OpenGL error before mesh creation");
+
         _vao = _gl.GenVertexArray();
         _vbo = _gl.GenBuffer();
         _ebo = _gl.GenBuffer();
@@ -59,12 +66,15 @@ public class Mesh : IDisposable
         _gl.BindVertexArray(_vao);
 
         UploadVertexData(vertices);
-        UploadIndexData(indices);
+        if (_indexType == DrawElementsType.UnsignedShort && indicesU16 != null)
+            UploadIndexData(indicesU16);
+        else
+            UploadIndexData(indicesU32);
         SetupVertexAttributes();
 
         _gl.BindVertexArray(0);
         
-        CheckGlErrors();
+        DrainGlErrors("[Mesh] OpenGL error after mesh creation");
     }
 
     private void UploadVertexData(Vertex[] vertices)
@@ -93,6 +103,19 @@ public class Mesh : IDisposable
         }
     }
 
+    private void UploadIndexData(ushort[] indices)
+    {
+        _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _ebo);
+        unsafe
+        {
+            fixed (ushort* i = indices)
+            {
+                var size = (nuint)(indices.Length * sizeof(ushort));
+                _gl.BufferData(BufferTargetARB.ElementArrayBuffer, size, i, BufferUsageARB.StaticDraw);
+            }
+        }
+    }
+
     private unsafe void SetupVertexAttributes()
     {
         _gl.EnableVertexAttribArray(0);
@@ -111,11 +134,19 @@ public class Mesh : IDisposable
         _gl.VertexAttribPointer(4, 3, VertexAttribPointerType.Float, false, (uint)sizeof(Vertex), (void*)(sizeof(Vector3) * 3 + sizeof(Vector2)));
     }
 
-    private void CheckGlErrors()
+    private void DrainGlErrors(string label)
     {
-        var error = _gl.GetError();
-        if (error != GLEnum.NoError)
-            Console.WriteLine($"[Mesh] WARNING: OpenGL error after mesh creation: {error}");
+        // Important: glGetError returns and clears one error at a time.
+        // Drain to avoid stale errors being reported much later (which can be misleading).
+        int drained = 0;
+        while (drained < 32)
+        {
+            var error = _gl.GetError();
+            if (error == GLEnum.NoError)
+                return;
+            drained++;
+            Console.WriteLine($"{label}: {error}");
+        }
     }
 
     public void Draw()
@@ -123,7 +154,7 @@ public class Mesh : IDisposable
         _gl.BindVertexArray(_vao);
         unsafe
         {
-            _gl.DrawElements(PrimitiveType.Triangles, (uint)_indexCount, DrawElementsType.UnsignedInt, (void*)0);
+            _gl.DrawElements(PrimitiveType.Triangles, (uint)_indexCount, _indexType, (void*)0);
         }
         _gl.BindVertexArray(0);
     }
@@ -241,5 +272,27 @@ public class Mesh : IDisposable
         };
 
         return new Mesh(gl, vertices, indices);
+    }
+
+    private static DrawElementsType ChooseIndexType(GL gl, uint[] indices, out ushort[]? indicesU16)
+    {
+        indicesU16 = null;
+
+        uint max = 0;
+        for (int i = 0; i < indices.Length; i++)
+            if (indices[i] > max) max = indices[i];
+
+        if (max <= ushort.MaxValue)
+        {
+            indicesU16 = new ushort[indices.Length];
+            for (int i = 0; i < indices.Length; i++)
+                indicesU16[i] = (ushort)indices[i];
+            return DrawElementsType.UnsignedShort;
+        }
+
+        // If indices don't fit 16-bit, fall back to uint indices.
+        // Note: On GLES2 this requires GL_OES_element_index_uint; on GLES3 it's core.
+        // We don't hard-fail here because some runtimes provide the extension even on ES2.
+        return DrawElementsType.UnsignedInt;
     }
 }

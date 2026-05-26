@@ -10,6 +10,7 @@ public class ShadowMap : IDisposable
 {
     private readonly GL _gl;
     private ShaderProgram _shadowShader;
+    private readonly bool _isOpenGles;
     
     private uint _depthMapFBO;
     private uint _depthMap;
@@ -23,6 +24,7 @@ public class ShadowMap : IDisposable
     public ShadowMap(GL gl)
     {
         _gl = gl;
+        _isOpenGles = ShaderCompat.IsOpenGlesContext(_gl);
         _shadowShader = new ShaderProgram(_gl, "Shaders/shadow.vert", "Shaders/shadow.frag");
         CreateFramebuffer();
     }
@@ -37,20 +39,35 @@ public class ShadowMap : IDisposable
             ShadowWidth, ShadowHeight, 0, PixelFormat.DepthComponent, PixelType.UnsignedInt, (void*)null);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Linear);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToBorder);
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToBorder);
-        
-        float[] borderColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-        fixed (float* ptr = borderColor)
+
+        // GLES (and ANGLE) typically doesn't support CLAMP_TO_BORDER / border color the same way desktop GL does.
+        // We already clamp shadow lookups to [0,1] in the shader, so CLAMP_TO_EDGE is fine for GLES.
+        if (_isOpenGles)
         {
-            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureBorderColor, ptr);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
+        }
+        else
+        {
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToBorder);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToBorder);
+
+            float[] borderColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+            fixed (float* ptr = borderColor)
+            {
+                _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureBorderColor, ptr);
+            }
         }
         
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _depthMapFBO);
         _gl.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, 
             TextureTarget.Texture2D, _depthMap, 0);
-        _gl.DrawBuffer(GLEnum.None);
-        _gl.ReadBuffer(GLEnum.None);
+
+        // Depth-only FBO: disable color outputs. GLES doesn't expose glDrawBuffer, so use DrawBuffers.
+        // Setting the first draw buffer to NONE avoids INCOMPLETE_DRAW_BUFFER on platforms with no color attachments.
+        _gl.DrawBuffers(1, new[] { DrawBufferMode.None });
+        try { _gl.ReadBuffer(GLEnum.None); } catch { /* Some GLES backends may not expose ReadBuffer; ignore. */ }
+
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
     }
 
