@@ -37,8 +37,14 @@ public class ShadowMap : IDisposable
         _gl.BindTexture(TextureTarget.Texture2D, _depthMap);
         _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.DepthComponent24, 
             ShadowWidth, ShadowHeight, 0, PixelFormat.DepthComponent, PixelType.UnsignedInt, (void*)null);
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Linear);
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
+        // IMPORTANT: depth textures must use NEAREST here.
+        // On OpenGL ES 3.0 (ANGLE on Windows), depth formats are NOT texture-filterable:
+        // LINEAR filtering without TEXTURE_COMPARE_MODE makes the texture incomplete and
+        // every sample returns 0 -> the whole shadow frustum reads as fully shadowed.
+        // The PBR shader does manual Poisson PCF with discrete taps, so NEAREST is correct
+        // on desktop GL too (no visual loss).
+        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
+        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
 
         // GLES (and ANGLE) typically doesn't support CLAMP_TO_BORDER / border color the same way desktop GL does.
         // We already clamp shadow lookups to [0,1] in the shader, so CLAMP_TO_EDGE is fine for GLES.
