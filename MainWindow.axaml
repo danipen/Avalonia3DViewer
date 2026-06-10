@@ -97,38 +97,38 @@
                     
                     <StackPanel Spacing="8">
                         <TextBlock Text="Main Light" Foreground="White"/>
-                        <Slider x:Name="MainLightSlider" 
-                               Minimum="0" 
-                               Maximum="10" 
-                               Value="4.0"
+                        <Slider x:Name="MainLightSlider"
+                               Minimum="0"
+                               Maximum="10"
+                               Value="2.2"
                                TickFrequency="0.1"/>
                         
                         <TextBlock Text="Fill Light" Foreground="White" Margin="0,4,0,0"/>
-                        <Slider x:Name="FillLightSlider" 
-                               Minimum="0" 
-                               Maximum="5" 
-                               Value="1.5"
+                        <Slider x:Name="FillLightSlider"
+                               Minimum="0"
+                               Maximum="5"
+                               Value="0.7"
                                TickFrequency="0.1"/>
                         
                         <TextBlock Text="Rim Light" Foreground="White" Margin="0,4,0,0"/>
-                        <Slider x:Name="RimLightSlider" 
-                               Minimum="0" 
-                               Maximum="5" 
-                               Value="1.0"
+                        <Slider x:Name="RimLightSlider"
+                               Minimum="0"
+                               Maximum="5"
+                               Value="0.6"
                                TickFrequency="0.1"/>
                         
                         <TextBlock Text="Top Light" Foreground="White" Margin="0,4,0,0"/>
-                        <Slider x:Name="TopLightSlider" 
-                               Minimum="0" 
-                               Maximum="5" 
-                               Value="0.5"
+                        <Slider x:Name="TopLightSlider"
+                               Minimum="0"
+                               Maximum="5"
+                               Value="0.6"
                                TickFrequency="0.1"/>
                         
                         <TextBlock Text="Ambient" Foreground="White" Margin="0,4,0,0"/>
-                        <Slider x:Name="AmbientSlider" 
-                               Minimum="0" 
-                               Maximum="0.5" 
-                               Value="0.08"
+                        <Slider x:Name="AmbientSlider"
+                               Minimum="0"
+                               Maximum="0.5"
+                               Value="0.25"
                                TickFrequency="0.01"/>
 
                         <Separator Margin="0,8,0,4"/>
@@ -144,14 +144,14 @@
                         <Slider x:Name="KeyLightSideBiasSlider"
                                Minimum="-1"
                                Maximum="1"
-                               Value="-0.35"
+                               Value="-0.6"
                                TickFrequency="0.01"/>
 
                         <TextBlock Text="Up Bias (down ↔ up)" Foreground="White" Margin="0,4,0,0"/>
                         <Slider x:Name="KeyLightUpBiasSlider"
                                Minimum="-1"
                                Maximum="1"
-                               Value="-0.25"
+                               Value="-0.36"
                                TickFrequency="0.01"/>
                     </StackPanel>
 
@@ -169,10 +169,10 @@
                                  IsChecked="True"/>
                         
                         <TextBlock Text="Shadow Strength" Foreground="White" Margin="0,4,0,0"/>
-                        <Slider x:Name="ShadowStrengthSlider" 
-                               Minimum="0" 
-                               Maximum="1" 
-                               Value="0.85"
+                        <Slider x:Name="ShadowStrengthSlider"
+                               Minimum="0"
+                               Maximum="1"
+                               Value="0.45"
                                TickFrequency="0.05"/>
                     </StackPanel>
 
@@ -201,7 +201,7 @@
                         <Slider x:Name="BloomIntensitySlider"
                                Minimum="0"
                                Maximum="1"
-                               Value="0.3"
+                               Value="0.1"
                                TickFrequency="0.01"/>
                         
                         <CheckBox x:Name="UseSSAOCheckBox" 
@@ -277,7 +277,7 @@
                         <Slider x:Name="IblIntensitySlider"
                                Minimum="0"
                                Maximum="2"
-                               Value="0.1"
+                               Value="1.0"
                                TickFrequency="0.01"/>
                         
                         <CheckBox x:Name="UseTonemappingCheckBox" 
@@ -289,7 +289,7 @@
                         <Slider x:Name="TonemapCompensationSlider"
                                Minimum="0.5"
                                Maximum="2"
-                               Value="1.15"
+                               Value="1.2"
                                TickFrequency="0.01"/>
                         
                         <CheckBox x:Name="UseFXAACheckBox" 

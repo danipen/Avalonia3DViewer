@@ -12,14 +12,24 @@ uniform vec2 noiseScale;        // ScreenSize / NoiseTextureSize (usually vec2(w
 
 // SSAO parameters
 const int kernelSize = 64;
-const float radius = 0.5;
-const float bias = 0.025;
+uniform float radius; // View-space units; scaled to the model size by the host
+uniform float bias;
 
 void main()
 {
     // Get input for SSAO algorithm
+    vec4 normalSample = texture(gNormal, TexCoord);
+
+    // Background pixels have no geometry (G-buffer cleared to 0):
+    // leave them fully unoccluded to avoid halos around the model.
+    if (dot(normalSample.xyz, normalSample.xyz) < 0.0001)
+    {
+        FragColor = 1.0;
+        return;
+    }
+
     vec3 fragPos = texture(gPosition, TexCoord).xyz;
-    vec3 normal = normalize(texture(gNormal, TexCoord).rgb);
+    vec3 normal = normalize(normalSample.xyz);
     vec3 randomVec = normalize(texture(texNoise, TexCoord * noiseScale).xyz);
     
     // Create TBN matrix to transform sample kernel to view-space

@@ -27,9 +27,11 @@ public class ProceduralHDRI : IDisposable
 
     private void GenerateProceduralSky()
     {
-        _envCubemap = CreateCubemapWithData(EnvSize, face => GenerateSkyGradient(face));
+        _envCubemap = CreateCubemapWithData(EnvSize, face => GenerateSkyGradient(face, EnvSize));
         _irradianceMap = CreateCubemapWithData(IrradianceSize, GenerateIrradiance);
-        _prefilterMap = CreateCubemapWithMipmaps(PrefilterSize, face => GenerateSkyGradient(face, 0.5f));
+        // Prefilter map uses the same sky at full intensity; mipmaps approximate
+        // increasing roughness (sampled via textureLod in the PBR shader).
+        _prefilterMap = CreateCubemapWithMipmaps(PrefilterSize, face => GenerateSkyGradient(face, PrefilterSize));
     }
 
     private uint CreateCubemapWithData(int size, Func<int, Vector3[]> generateFaceData)
@@ -88,14 +90,13 @@ public class ProceduralHDRI : IDisposable
         _gl.TexParameter(TextureTarget.TextureCubeMap, TextureParameterName.TextureWrapR, (int)GLEnum.ClampToEdge);
     }
 
-    private Vector3[] GenerateSkyGradient(int face, float intensity = 1.0f)
+    private Vector3[] GenerateSkyGradient(int face, int size)
     {
-        int size = intensity < 1.0f ? PrefilterSize : EnvSize;
         var colors = new Vector3[size * size];
-        
-        var skyTop = new Vector3(0.4f, 0.45f, 0.55f) * intensity;
-        var skyHorizon = new Vector3(0.7f, 0.7f, 0.72f) * intensity;
-        var skyBottom = new Vector3(0.15f, 0.15f, 0.18f) * intensity;
+
+        var skyTop = new Vector3(0.4f, 0.45f, 0.55f);
+        var skyHorizon = new Vector3(0.7f, 0.7f, 0.72f);
+        var skyBottom = new Vector3(0.15f, 0.15f, 0.18f);
         var sunDir = Vector3.Normalize(new Vector3(-0.3f, -0.7f, -0.4f));
         
         for (int y = 0; y < size; y++)
@@ -112,7 +113,7 @@ public class ProceduralHDRI : IDisposable
                     ? Vector3.Lerp(skyHorizon, skyTop, (t - 0.5f) * 2.0f)
                     : Vector3.Lerp(skyBottom, skyHorizon, t * 2.0f);
                 
-                color = AddSunGlow(color, dir, sunDir, intensity);
+                color = AddSunGlow(color, dir, sunDir, 1.0f);
                 colors[y * size + x] = color;
             }
         }
@@ -122,9 +123,13 @@ public class ProceduralHDRI : IDisposable
 
     private static Vector3 AddSunGlow(Vector3 color, Vector3 dir, Vector3 sunDir, float intensity)
     {
+        // Keep the sun hotspot moderate: very glossy materials (low roughness)
+        // mirror this directly, and an 8x white blob reads as ugly bright
+        // splotches on smooth surfaces. Direct lights provide the crisp
+        // highlights instead.
         float sunDot = Math.Max(0, Vector3.Dot(dir, -sunDir));
-        float sunGlow = MathF.Pow(sunDot, 64.0f) * 8.0f * intensity;
-        float sunHalo = MathF.Pow(sunDot, 8.0f) * 1.5f * intensity;
+        float sunGlow = MathF.Pow(sunDot, 64.0f) * 3.0f * intensity;
+        float sunHalo = MathF.Pow(sunDot, 8.0f) * 0.8f * intensity;
         
         color += new Vector3(1.0f, 0.95f, 0.85f) * sunGlow;
         color += new Vector3(1.0f, 0.98f, 0.92f) * sunHalo;

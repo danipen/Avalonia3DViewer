@@ -16,8 +16,19 @@ public class LoadedMaterialTextures : IDisposable
     public Texture? RoughnessMap { get; set; }
     public Texture? AOMap { get; set; }
 
+    // Channel each value is stored in (0=R, 1=G, 2=B, 3=A). See MaterialTexturesData.
+    public int MetallicChannel { get; set; }
+    public int RoughnessChannel { get; set; }
+    public int AoChannel { get; set; }
+
+    // True when the roughness map stores glossiness (roughness = 1 - sample).
+    public bool RoughnessInvert { get; set; }
+
     public void Dispose()
     {
+        // Note: packed textures may be shared between slots (and between
+        // materials). Texture.Dispose is idempotent, so double-dispose of a
+        // shared instance is safe.
         AlbedoMap?.Dispose();
         NormalMap?.Dispose();
         MetallicMap?.Dispose();
@@ -51,6 +62,32 @@ public static class MaterialHelper
     private const string AiMatKeyMetallicFactor = "$mat.metallicFactor";
     private const string AiMatKeyRoughnessFactor = "$mat.roughnessFactor";
 
+    // KHR_materials_pbrSpecularGlossiness (very common in Sketchfab exports).
+    // Key names differ between assimp versions, so several are checked.
+    private const string GltfSpecularGlossinessFlag = "$mat.gltf.pbrSpecularGlossiness";
+    private const string AiMatKeyGlossinessFactor = "$mat.glossinessFactor";
+    private const string GltfGlossinessFactor = "$mat.gltf.pbrSpecularGlossiness.glossinessFactor";
+
+    /// <summary>
+    /// True when the material uses the glTF specular-glossiness workflow.
+    /// These materials are dielectric (metallic = 0) and store glossiness
+    /// (inverse roughness) in the alpha of the specularGlossiness texture.
+    /// </summary>
+    public static bool IsSpecularGlossiness(Assimp.Material mat)
+    {
+        foreach (var prop in mat.GetAllProperties())
+        {
+            if (prop.Name == GltfSpecularGlossinessFlag ||
+                prop.Name == AiMatKeyGlossinessFactor ||
+                prop.Name == GltfGlossinessFactor ||
+                prop.Name.Contains("pbrSpecularGlossiness", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static Vector3 GetAlbedo(Assimp.Material mat)
     {
         foreach (var prop in mat.GetAllProperties())
@@ -76,12 +113,20 @@ public static class MaterialHelper
 
     public static float GetMetallic(Assimp.Material mat)
     {
+        // IMPORTANT: this check must come FIRST. Assimp's glTF importer writes
+        // the metallic-roughness factors even for specular-glossiness materials,
+        // using the glTF spec defaults (metallicFactor = 1.0!). Trusting that
+        // factor would make every spec-gloss model (most Sketchfab exports)
+        // render as full metal. Spec-gloss materials are dielectric by definition.
+        if (IsSpecularGlossiness(mat))
+            return 0.0f;
+
         if (TryGetFloatProperty(mat, GltfMetallicFactor, out float gltfMetallic))
             return Math.Clamp(gltfMetallic, 0.0f, 1.0f);
-        
+
         if (TryGetFloatProperty(mat, AiMatKeyMetallicFactor, out float aiMetallic))
             return Math.Clamp(aiMetallic, 0.0f, 1.0f);
-        
+
         if (mat.HasReflectivity)
             return Math.Clamp(mat.Reflectivity, 0.0f, 1.0f);
 
@@ -90,12 +135,25 @@ public static class MaterialHelper
 
     public static float GetRoughness(Assimp.Material mat)
     {
+        // Spec-gloss first: assimp also writes the metallic-roughness factors
+        // (glTF defaults: roughnessFactor = 1.0) for spec-gloss materials, so
+        // the glossiness conversion must take precedence (see GetMetallic).
+        if (IsSpecularGlossiness(mat))
+        {
+            if (TryGetFloatProperty(mat, AiMatKeyGlossinessFactor, out float gloss) ||
+                TryGetFloatProperty(mat, GltfGlossinessFactor, out gloss))
+            {
+                return Math.Clamp(1.0f - gloss, 0.04f, 1.0f);
+            }
+            return 0.5f; // No factor: neutral default for spec-gloss
+        }
+
         if (TryGetFloatProperty(mat, GltfRoughnessFactor, out float gltfRoughness))
             return Math.Clamp(gltfRoughness, 0.04f, 1.0f);
-        
+
         if (TryGetFloatProperty(mat, AiMatKeyRoughnessFactor, out float aiRoughness))
             return Math.Clamp(aiRoughness, 0.04f, 1.0f);
-        
+
         if (mat.HasShininess)
         {
             float roughness = MathF.Sqrt(2.0f / (mat.Shininess + 2.0f));
@@ -103,6 +161,47 @@ public static class MaterialHelper
         }
 
         return 0.7f;
+    }
+
+    /// <summary>
+    /// Multiplier for the sampled metallic texture value. Per the glTF spec,
+    /// metallic = metallicFactor × texture.B. Returns 1 when no factor exists
+    /// (legacy formats), so standalone metallic maps are unaffected.
+    /// </summary>
+    public static float GetMetallicTextureScale(Assimp.Material mat)
+    {
+        if (TryGetFloatProperty(mat, GltfMetallicFactor, out float f) ||
+            TryGetFloatProperty(mat, AiMatKeyMetallicFactor, out f))
+        {
+            return Math.Clamp(f, 0.0f, 1.0f);
+        }
+        return 1.0f;
+    }
+
+    /// <summary>
+    /// Multiplier for the sampled roughness/glossiness texture value.
+    /// glTF metallic-roughness: roughness = roughnessFactor × texture.G.
+    /// glTF specular-glossiness: glossiness = glossinessFactor × texture.A
+    /// (the shader inverts after scaling). Returns 1 when no factor exists.
+    /// </summary>
+    public static float GetRoughnessTextureScale(Assimp.Material mat)
+    {
+        if (IsSpecularGlossiness(mat))
+        {
+            if (TryGetFloatProperty(mat, AiMatKeyGlossinessFactor, out float g) ||
+                TryGetFloatProperty(mat, GltfGlossinessFactor, out g))
+            {
+                return Math.Clamp(g, 0.0f, 1.0f);
+            }
+            return 1.0f;
+        }
+
+        if (TryGetFloatProperty(mat, GltfRoughnessFactor, out float r) ||
+            TryGetFloatProperty(mat, AiMatKeyRoughnessFactor, out r))
+        {
+            return Math.Clamp(r, 0.0f, 1.0f);
+        }
+        return 1.0f;
     }
 
     public static float GetOpacity(Assimp.Material mat) => mat.HasOpacity ? mat.Opacity : 1.0f;
@@ -192,264 +291,77 @@ public class Model : IDisposable
         
         model.Materials.AddRange(data.Materials);
         data.Materials.Clear();
-        
+
+        // Shared decoded textures (packed glTF maps, textures reused across
+        // materials) are uploaded to the GPU only once.
+        var uploadCache = new Dictionary<TextureData, Texture?>(ReferenceEqualityComparer.Instance);
         foreach (var texData in data.TexturesData)
-            model.LoadedTextures.Add(UploadMaterialTextures(gl, texData));
-        
+            model.LoadedTextures.Add(UploadMaterialTextures(gl, texData, uploadCache));
+
         foreach (var meshData in data.Meshes)
             model.Meshes.Add(new Mesh(gl, meshData.Vertices, meshData.Indices, meshData.MaterialIndex, keepVertices: false));
-        
+
         return model;
     }
 
-    private static LoadedMaterialTextures UploadMaterialTextures(GL gl, MaterialTexturesData texData)
+    private static LoadedMaterialTextures UploadMaterialTextures(
+        GL gl, MaterialTexturesData texData, Dictionary<TextureData, Texture?> uploadCache)
     {
-        var loadedTextures = new LoadedMaterialTextures();
-        
+        var loadedTextures = new LoadedMaterialTextures
+        {
+            MetallicChannel = texData.MetallicChannel,
+            RoughnessChannel = texData.RoughnessChannel,
+            AoChannel = texData.AoChannel,
+            RoughnessInvert = texData.RoughnessInvert
+        };
+
         if (texData.AlbedoMap != null)
-            loadedTextures.AlbedoMap = UploadTexture(gl, texData.AlbedoMap);
+            loadedTextures.AlbedoMap = UploadTexture(gl, texData.AlbedoMap, uploadCache);
         if (texData.NormalMap != null)
-            loadedTextures.NormalMap = UploadTexture(gl, texData.NormalMap);
+            loadedTextures.NormalMap = UploadTexture(gl, texData.NormalMap, uploadCache);
         if (texData.MetallicMap != null)
-            loadedTextures.MetallicMap = UploadTexture(gl, texData.MetallicMap);
+            loadedTextures.MetallicMap = UploadTexture(gl, texData.MetallicMap, uploadCache);
         if (texData.RoughnessMap != null)
-            loadedTextures.RoughnessMap = UploadTexture(gl, texData.RoughnessMap);
+            loadedTextures.RoughnessMap = UploadTexture(gl, texData.RoughnessMap, uploadCache);
         if (texData.AOMap != null)
-            loadedTextures.AOMap = UploadTexture(gl, texData.AOMap);
-        
+            loadedTextures.AOMap = UploadTexture(gl, texData.AOMap, uploadCache);
+
         return loadedTextures;
     }
-    
-    private static Texture? UploadTexture(GL gl, TextureData texData)
+
+    private static Texture? UploadTexture(GL gl, TextureData texData, Dictionary<TextureData, Texture?> uploadCache)
     {
+        if (uploadCache.TryGetValue(texData, out var cached))
+            return cached;
+
+        Texture? texture = null;
         try
         {
-            if (texData.PixelData.Length > 0 && texData.Width > 0 && texData.Height > 0)
-                return Texture.CreateFromPixelData(gl, texData.PixelData, texData.Width, texData.Height, texData.IsSrgb);
+            if (texData.PixelData != null && texData.PixelData.Length > 0 && texData.Width > 0 && texData.Height > 0)
+                texture = Texture.CreateFromPixelData(gl, texData.PixelData, texData.Width, texData.Height, texData.IsSrgb);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Model] Failed to upload texture: {ex.Message}");
         }
-        return null;
+
+        uploadCache[texData] = texture;
+        return texture;
     }
 
     public static Model LoadFromFile(GL gl, string path)
     {
-        var model = new Model(gl);
+        // Share the loader with the async path so both behave identically
+        // (embedded textures, packed glTF channels, bounds, scaling, ...).
+        var data = ModelLoader.Load(path);
         try
         {
-            model._assimpContext = new AssimpContext();
-            model._assimpScene = model._assimpContext.ImportFile(path,
-                PostProcessSteps.Triangulate |
-                PostProcessSteps.GenerateNormals |
-                PostProcessSteps.CalculateTangentSpace |
-                PostProcessSteps.FlipUVs);
-
-            var scene = model._assimpScene;
-            if (scene == null || scene.SceneFlags.HasFlag(SceneFlags.Incomplete) || scene.RootNode == null)
-                throw new Exception($"Failed to load model: {path}");
-
-            string directory = System.IO.Path.GetDirectoryName(path) ?? "";
-
-            foreach (var mat in scene.Materials)
-            {
-                model.Materials.Add(mat);
-                model.LoadedTextures.Add(LoadMaterialTextures(gl, mat, scene, directory));
-            }
-
-            model.ProcessNode(scene.RootNode, scene);
-            model.CalculateBounds();
-            model.ClearMeshCpuData();
-
-            return model;
+            return CreateFromLoadData(gl, data);
         }
-        catch
+        finally
         {
-            model.Dispose();
-            throw;
+            data.Dispose();
         }
-    }
-
-    private static LoadedMaterialTextures LoadMaterialTextures(GL gl, Assimp.Material mat, Scene scene, string directory)
-    {
-        var loadedTextures = new LoadedMaterialTextures();
-
-        if (mat.HasTextureDiffuse)
-            loadedTextures.AlbedoMap = LoadTexture(gl, mat.TextureDiffuse, scene, directory, srgb: true);
-
-        if (mat.HasTextureNormal)
-            loadedTextures.NormalMap = LoadTexture(gl, mat.TextureNormal.FilePath, directory);
-        else if (mat.HasTextureHeight)
-            loadedTextures.NormalMap = LoadTexture(gl, mat.TextureHeight.FilePath, directory);
-
-        if (mat.HasTextureSpecular)
-            loadedTextures.MetallicMap = LoadTexture(gl, mat.TextureSpecular.FilePath, directory);
-
-        if (mat.GetMaterialTextureCount(TextureType.Shininess) > 0)
-        {
-            mat.GetMaterialTexture(TextureType.Shininess, 0, out TextureSlot tex);
-            loadedTextures.RoughnessMap = LoadTexture(gl, tex.FilePath, directory);
-        }
-
-        if (mat.GetMaterialTextureCount(TextureType.Ambient) > 0)
-        {
-            mat.GetMaterialTexture(TextureType.Ambient, 0, out TextureSlot tex);
-            loadedTextures.AOMap = LoadTexture(gl, tex.FilePath, directory);
-        }
-
-        return loadedTextures;
-    }
-
-    private static Texture? LoadTexture(GL gl, TextureSlot texSlot, Scene scene, string directory, bool srgb)
-    {
-        if (texSlot.FilePath.StartsWith("*"))
-            return LoadEmbeddedTexture(gl, texSlot.FilePath, scene, srgb);
-        
-        return LoadTexture(gl, texSlot.FilePath, directory, srgb);
-    }
-
-    private static Texture? LoadEmbeddedTexture(GL gl, string filePath, Scene scene, bool srgb)
-    {
-        if (!int.TryParse(filePath.AsSpan(1), out int texIndex) || texIndex >= scene.TextureCount)
-            return null;
-
-        var embeddedTex = scene.Textures[texIndex];
-        if (!embeddedTex.HasCompressedData) return null;
-
-        try
-        {
-            return Texture.LoadFromMemory(gl, embeddedTex.CompressedData, srgb);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static Texture? LoadTexture(GL gl, string filePath, string directory, bool srgb = false)
-    {
-        string texPath = System.IO.Path.Combine(directory, filePath);
-        return System.IO.File.Exists(texPath) ? Texture.LoadFromFile(gl, texPath, srgb) : null;
-    }
-
-    private void ProcessNode(Node node, Scene scene, Matrix4x4 parentTransform = default)
-    {
-        var nodeTransform = parentTransform == default ? Matrix4x4.Identity : parentTransform;
-        
-        // Assimp/AssimpNetter node transforms are effectively transposed vs how System.Numerics
-        // expects them when using Vector3.Transform (row-vector convention).
-        // We keep the previous behavior (from AssimpNet) by transposing here.
-        var transform = Matrix4x4.Transpose(node.Transform);
-        
-        nodeTransform = transform * nodeTransform;
-        
-        foreach (var meshIndex in node.MeshIndices)
-        {
-            var assimpMesh = scene.Meshes[meshIndex];
-            Meshes.Add(ProcessMesh(assimpMesh, nodeTransform, assimpMesh.MaterialIndex));
-        }
-
-        foreach (var child in node.Children)
-            ProcessNode(child, scene, nodeTransform);
-    }
-
-    private Mesh ProcessMesh(Assimp.Mesh assimpMesh, Matrix4x4 transform, int materialIndex)
-    {
-        try
-        {
-            Matrix4x4.Invert(transform, out var invTransform);
-            var normalMatrix = Matrix4x4.Transpose(invTransform);
-
-            var vertices = new Vertex[assimpMesh.VertexCount];
-            for (int i = 0; i < assimpMesh.VertexCount; i++)
-                vertices[i] = CreateVertex(assimpMesh, i, transform, normalMatrix);
-
-            var indices = new List<uint>();
-            foreach (var face in assimpMesh.Faces)
-            {
-                foreach (var index in face.Indices)
-                    indices.Add((uint)index);
-            }
-
-            return new Mesh(_gl, vertices, indices.ToArray(), materialIndex, keepVertices: true);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Model] ERROR processing mesh: {ex.Message}");
-            throw;
-        }
-    }
-
-    private static Vertex CreateVertex(Assimp.Mesh mesh, int index, Matrix4x4 transform, Matrix4x4 normalMatrix)
-    {
-        var pos = new Vector3(mesh.Vertices[index].X, mesh.Vertices[index].Y, mesh.Vertices[index].Z);
-        
-        var normal = mesh.HasNormals
-            ? new Vector3(mesh.Normals[index].X, mesh.Normals[index].Y, mesh.Normals[index].Z)
-            : Vector3.UnitY;
-        
-        var tangent = mesh.HasTangentBasis
-            ? new Vector3(mesh.Tangents[index].X, mesh.Tangents[index].Y, mesh.Tangents[index].Z)
-            : Vector3.UnitX;
-        
-        var bitangent = mesh.HasTangentBasis
-            ? new Vector3(mesh.BiTangents[index].X, mesh.BiTangents[index].Y, mesh.BiTangents[index].Z)
-            : Vector3.UnitZ;
-
-        return new Vertex
-        {
-            Position = Vector3.Transform(pos, transform),
-            Normal = Vector3.Normalize(Vector3.TransformNormal(normal, normalMatrix)),
-            TexCoord = mesh.HasTextureCoords(0)
-                ? new Vector2(mesh.TextureCoordinateChannels[0][index].X, mesh.TextureCoordinateChannels[0][index].Y)
-                : Vector2.Zero,
-            Tangent = Vector3.Normalize(Vector3.TransformNormal(tangent, normalMatrix)),
-            Bitangent = Vector3.Normalize(Vector3.TransformNormal(bitangent, normalMatrix))
-        };
-    }
-
-    private void CalculateBounds()
-    {
-        if (Meshes.Count == 0)
-        {
-            BoundsMin = BoundsMax = Vector3.Zero;
-            Radius = 1.0f;
-            return;
-        }
-
-        BoundsMin = new Vector3(float.MaxValue);
-        BoundsMax = new Vector3(float.MinValue);
-
-        foreach (var mesh in Meshes)
-        {
-            var meshBounds = mesh.GetBounds();
-            BoundsMin = Vector3.Min(BoundsMin, meshBounds.Min);
-            BoundsMax = Vector3.Max(BoundsMax, meshBounds.Max);
-        }
-
-        Radius = Vector3.Distance(BoundsMin, BoundsMax) * 0.5f;
-        
-        ScaleUpIfTooSmall();
-    }
-
-    private void ScaleUpIfTooSmall()
-    {
-        if (Radius >= 0.1f) return;
-
-        const float scale = 100.0f;
-        BoundsMin *= scale;
-        BoundsMax *= scale;
-        Radius *= scale;
-        
-        foreach (var mesh in Meshes)
-            mesh.Scale(scale);
-    }
-
-    public void ClearMeshCpuData()
-    {
-        foreach (var mesh in Meshes)
-            mesh.ClearCpuVertexData();
     }
 
     public void Dispose()

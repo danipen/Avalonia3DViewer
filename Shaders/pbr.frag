@@ -31,6 +31,24 @@ uniform bool useMetallicMap;
 uniform bool useRoughnessMap;
 uniform bool useAOMap;
 
+// Source channel for each scalar map (0=R, 1=G, 2=B, 3=A).
+// glTF packs occlusion/roughness/metallic into R/G/B of one texture.
+uniform int metallicChannel;
+uniform int roughnessChannel;
+uniform int aoChannel;
+
+// Specular-glossiness workflow: the map stores glossiness, so the sampled
+// value must be inverted to get roughness (roughness = 1 - glossiness).
+uniform bool roughnessInvert;
+
+// glTF factor * texture rule:
+//   metallic  = metallicFactor  * texture.B
+//   roughness = roughnessFactor * texture.G   (metallic-roughness)
+//   glossiness = glossinessFactor * texture.A (specular-glossiness, then inverted)
+// Both default to 1.0 for formats without factors.
+uniform float metallicTexScale;
+uniform float roughnessTexScale;
+
 // IBL
 uniform samplerCube irradianceMap;
 uniform samplerCube prefilterMap;
@@ -91,19 +109,6 @@ float DistributionGGX(float NdotH, float roughness)
     return a2 / (PI * denom * denom);
 }
 
-// Geometry Function - Smith GGX with height-correlated masking-shadowing
-// Using the separable form for simplicity, but height-correlated is more accurate
-float GeometrySmithGGX(float NdotV, float NdotL, float roughness)
-{
-    float a = roughness * roughness;
-    float a2 = a * a;
-    
-    float GGXV = NdotL * sqrt(NdotV * NdotV * (1.0 - a2) + a2);
-    float GGXL = NdotV * sqrt(NdotL * NdotL * (1.0 - a2) + a2);
-    
-    return 0.5 / max(GGXV + GGXL, 0.0001);
-}
-
 // Schlick-GGX for direct lighting (different k than IBL)
 float GeometrySchlickGGX_Direct(float NdotX, float roughness)
 {
@@ -112,22 +117,17 @@ float GeometrySchlickGGX_Direct(float NdotX, float roughness)
     return NdotX / (NdotX * (1.0 - k) + k);
 }
 
-// Schlick-GGX for IBL
-float GeometrySchlickGGX_IBL(float NdotX, float roughness)
-{
-    float a = roughness * roughness;
-    float k = a / 2.0;
-    return NdotX / (NdotX * (1.0 - k) + k);
-}
-
 float GeometrySmith_Direct(float NdotV, float NdotL, float roughness)
 {
     return GeometrySchlickGGX_Direct(NdotV, roughness) * GeometrySchlickGGX_Direct(NdotL, roughness);
 }
 
-float GeometrySmith_IBL(float NdotV, float NdotL, float roughness)
+// Samples a scalar material value from the given channel of a packed texture.
+float sampleChannel(sampler2D tex, vec2 uv, int channel)
 {
-    return GeometrySchlickGGX_IBL(NdotV, roughness) * GeometrySchlickGGX_IBL(NdotL, roughness);
+    vec4 c = texture(tex, uv);
+    if (channel == 3) return c.a;
+    return channel == 1 ? c.g : (channel == 2 ? c.b : c.r);
 }
 
 // Fresnel - Schlick approximation with spherical Gaussian approximation for roughness
@@ -158,40 +158,8 @@ vec3 getNormalFromMap()
 }
 
 // ============================================================================
-// TONE MAPPING - ACES Fitted (more accurate than simple ACES)
-// ============================================================================
-
-// sRGB => XYZ => D65_2_D60 => AP1 => RRT_SAT
-const mat3 ACESInputMat = mat3(
-    0.59719, 0.07600, 0.02840,
-    0.35458, 0.90834, 0.13383,
-    0.04823, 0.01566, 0.83777
-);
-
-// ODT_SAT => XYZ => D60_2_D65 => sRGB
-const mat3 ACESOutputMat = mat3(
-    1.60475, -0.10208, -0.00327,
-    -0.53108, 1.10813, -0.07276,
-    -0.07367, -0.00605, 1.07602
-);
-
-vec3 RRTAndODTFit(vec3 v)
-{
-    vec3 a = v * (v + 0.0245786) - 0.000090537;
-    vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
-    return a / b;
-}
-
-vec3 ACESFitted(vec3 color)
-{
-    color = color * ACESInputMat;
-    color = RRTAndODTFit(color);
-    color = color * ACESOutputMat;
-    return clamp(color, 0.0, 1.0);
-}
-
-// ============================================================================
 // SHADOW CALCULATION - Improved PCF with Poisson Disk Sampling
+// (Tone mapping happens in the composite pass, not here.)
 // ============================================================================
 
 const vec2 poissonDisk[16] = vec2[](
@@ -237,16 +205,22 @@ float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDirection)
     float cosTheta = max(dot(normal, -lightDirection), 0.0);
     float bias = max(0.005 * (1.0 - cosTheta), 0.001);
     
-    // PCSS-style variable penumbra (simplified)
+    // PCF with a per-pixel ROTATED Poisson disk. Rotating the whole disk by a
+    // single random angle per pixel keeps edges soft without the salt-and-pepper
+    // "dotted" noise that per-tap random index selection produces.
     float shadow = 0.0;
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
-    float diskRadius = 3.0; // Penumbra size
-    
-    // Poisson disk sampling for smooth shadows
+    float diskRadius = 2.0; // Penumbra size in texels
+
+    float angle = 6.2831853 * random(vFragPos, 0);
+    float sa = sin(angle);
+    float ca = cos(angle);
+    mat2 diskRotation = mat2(ca, sa, -sa, ca);
+
     for (int i = 0; i < 16; ++i)
     {
-        int index = int(16.0 * random(vFragPos, i)) % 16;
-        float pcfDepth = texture(shadowMap, projCoords.xy + poissonDisk[index] * texelSize * diskRadius).r;
+        vec2 offset = diskRotation * poissonDisk[i] * texelSize * diskRadius;
+        float pcfDepth = texture(shadowMap, projCoords.xy + offset).r;
         shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
     }
     shadow /= 16.0;
@@ -329,8 +303,8 @@ vec3 calculateIBL(vec3 N, vec3 V, vec3 R, vec3 F0, vec3 albedoColor,
     // Standard split-sum approximation
     // brdf.x = scale (multiplied by F0), brdf.y = bias (added constant)
     vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
-    
-    // Apply user-controlled specular scale (default should be 1.0)
+
+    // User-controlled specular scale (1.0 = physically based)
     specular *= specularScale;
     
     // Apply overall IBL intensity
@@ -404,9 +378,22 @@ void main()
         return;
     }
     
-    float metallicSample = useMetallicMap ? texture(metallicMap, vTexCoord).r : metallic;
-    float roughnessSample = useRoughnessMap ? texture(roughnessMap, vTexCoord).r : roughness;
-    float aoSample = useAOMap ? texture(aoMap, vTexCoord).r : ao;
+    float metallicSample = useMetallicMap
+        ? sampleChannel(metallicMap, vTexCoord, metallicChannel) * metallicTexScale
+        : metallic;
+
+    float roughnessSample;
+    if (useRoughnessMap)
+    {
+        float r = sampleChannel(roughnessMap, vTexCoord, roughnessChannel) * roughnessTexScale;
+        roughnessSample = roughnessInvert ? 1.0 - r : r;
+    }
+    else
+    {
+        roughnessSample = roughness;
+    }
+
+    float aoSample = useAOMap ? sampleChannel(aoMap, vTexCoord, aoChannel) : ao;
     
     // Apply material overrides from UI controls
     metallicSample = clamp(metallicSample + metallicOffset, 0.0, 1.0);
@@ -438,36 +425,33 @@ void main()
         // IBL path with multi-scattering compensation
         vec3 iblColor = calculateIBL(N, V, R, F0, albedoSample, metallicSample, roughnessSample, aoSample);
         
-        // Add direct lighting contribution for crisp specular highlights on metals and glass
-        // IBL alone provides soft environment reflections but lacks sharp highlights
-        // Use dynamic lightDir (camera-relative) for the main light
-        vec3 L1 = normalize(lightDir); 
-        vec3 directLight1 = calculateDirectionalLight(-L1, N, V, F0, albedoSample, metallicSample, roughnessSample,
-                                                       vec3(1.0, 0.98, 0.95), mainLightIntensity * 1.5);
-        
-        // Secondary fill light from the opposite side to illuminate dark areas
-        vec3 L2 = normalize(-lightDir + vec3(0.0, 0.3, 0.0)); // Opposite direction, slightly elevated
-        vec3 directLight2 = calculateDirectionalLight(-L2, N, V, F0, albedoSample, metallicSample, roughnessSample,
-                                                       vec3(0.7, 0.8, 1.0), fillLightIntensity * 0.8);
-        
-        // Additional rim/side light for definition
-        vec3 L3 = normalize(vec3(0.6, -0.4, 0.7));
-        vec3 directLight3 = calculateDirectionalLight(-L3, N, V, F0, albedoSample, metallicSample, roughnessSample,
-                                                       vec3(0.8, 0.85, 1.0), fillLightIntensity * 0.5);
+        // Add direct lighting for crisp specular highlights; IBL alone provides
+        // soft environment reflections but lacks sharp highlights.
+        // Slider intensities are used as-is (no hidden multipliers).
 
-        // Rim/back light - for edge definition (now also applied in IBL mode)
+        // Key light (camera-relative when "follows camera" is enabled)
+        vec3 L1 = normalize(lightDir);
+        vec3 directLight1 = calculateDirectionalLight(-L1, N, V, F0, albedoSample, metallicSample, roughnessSample,
+                                                       vec3(1.0, 0.98, 0.95), mainLightIntensity);
+
+        // Fill light from the opposite side to soften dark areas
+        vec3 L2 = normalize(-lightDir + vec3(0.0, 0.3, 0.0));
+        vec3 directLight2 = calculateDirectionalLight(-L2, N, V, F0, albedoSample, metallicSample, roughnessSample,
+                                                       vec3(0.7, 0.8, 1.0), fillLightIntensity);
+
+        // Rim/back light for edge definition
         vec3 L4 = normalize(vec3(0.0, 0.3, 1.0));
         vec3 directLight4 = calculateDirectionalLight(-L4, N, V, F0, albedoSample, metallicSample, roughnessSample,
                                                        vec3(1.0, 0.95, 0.9), rimLightIntensity);
 
-        // Top light (now also applied in IBL mode)
+        // Top light
         vec3 L5 = normalize(vec3(0.0, -1.0, 0.0));
         vec3 directLight5 = calculateDirectionalLight(-L5, N, V, F0, albedoSample, metallicSample, roughnessSample,
                                                        vec3(0.9, 0.92, 1.0), topLightIntensity);
-        
+
         // Combine IBL with direct lighting
         // Direct lights add crisp highlights, IBL provides ambient fill
-        vec3 directContribution = (directLight1 + directLight2 + directLight3 + directLight4 + directLight5) * (1.0 - shadow * shadowStrength);
+        vec3 directContribution = (directLight1 + directLight2 + directLight4 + directLight5) * (1.0 - shadow * shadowStrength);
         
         // Debug mode 3: Show IBL result only (before shadow)
         if (debugMode == 3) {

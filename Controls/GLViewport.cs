@@ -89,9 +89,9 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
     private bool _isMiddleButtonPressed;
 
     // Rendering and lighting properties
-    public float Exposure { get; set; } = 1.15f;
+    public float Exposure { get; set; } = 1.0f;
     // Applied only when tonemapping is enabled (helps match perceived brightness when toggling tonemap).
-    public float TonemapExposureCompensation { get; set; } = 1.25f;
+    public float TonemapExposureCompensation { get; set; } = 1.2f;
     public bool UseBloom { get; set; } = false;
     public float BloomIntensity { get; set; } = 0.1f;
     public bool UseSSAO { get; set; } = true;
@@ -105,16 +105,19 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
     // 0..1 multiplier for how visible the shadow is on the catcher.
     public float ShadowCatcherOpacity { get; set; } = 1.0f;
     
-    // Light intensities - increased for better illumination
-    public float MainLightIntensity { get; set; } = 3.5f;
-    public float FillLightIntensity { get; set; } = 2f;
-    public float RimLightIntensity { get; set; } = 0.75f;
-    public float TopLightIntensity { get; set; } = 2.4f;
-    public float AmbientIntensity { get; set; } = 0.35f;
-    
+    // Light intensities. These are used as-is by the shader (no hidden multipliers),
+    // tuned for an environment-dominant look: IBL carries the ambient/reflections,
+    // direct lights only add modest key/fill/rim accents (too-strong direct lights
+    // read as a glossy sheen on every material).
+    public float MainLightIntensity { get; set; } = 2.2f;
+    public float FillLightIntensity { get; set; } = 0.7f;
+    public float RimLightIntensity { get; set; } = 0.6f;
+    public float TopLightIntensity { get; set; } = 0.6f;
+    public float AmbientIntensity { get; set; } = 0.25f;
+
     // Shadow properties
     public bool UseShadows { get; set; } = true;
-    public float ShadowStrength { get; set; } = 0.3f;
+    public float ShadowStrength { get; set; } = 0.45f;
 
     // Key light direction control
     // If true, the main directional light will be derived from the current camera direction so the model
@@ -147,9 +150,12 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
     // Light background is white (as current). Dark background is a very dark gray (not black).
     public bool UseDarkBackground { get; set; } = false;
     
-    // Material override controls
-    public float SpecularScale { get; set; } = 0.05f;
-    public float RoughnessOffset { get; set; } = 0.5f;
+    // Material override controls. Neutral defaults: the render is physically
+    // based out of the box, and these act as artistic overrides only.
+    // (The old defaults — SpecularScale 0.05, RoughnessOffset 0.5 — were
+    // compensating for a broken BRDF LUT and missing metallic/roughness maps.)
+    public float SpecularScale { get; set; } = 1.0f;
+    public float RoughnessOffset { get; set; } = 0.0f;
     public float MetallicOffset { get; set; } = 0.0f;
     public float IblIntensity { get; set; } = 1f;
     
@@ -294,10 +300,12 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
         DrainGlErrors(_gl, "After blend state");
         
-        // Initialize camera
+        // Initialize camera (Bounds may not be laid out yet, so guard the aspect ratio)
         _camera = new Camera
         {
-            AspectRatio = (float)Bounds.Width / (float)Bounds.Height
+            AspectRatio = Bounds.Width > 0 && Bounds.Height > 0
+                ? (float)(Bounds.Width / Bounds.Height)
+                : 16.0f / 9.0f
         };
         _camera.SetDistance(5.0f);
 
@@ -357,11 +365,24 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
             // Ground plane will be created dynamically when model is loaded
             _groundPlane = null;
             
-            // Auto-load model for autonomous testing
-            string autoLoadPath = "../../../sample-models/1969_dodge_charger_rt.glb";
-            if (File.Exists(autoLoadPath))
+            // Auto-load the bundled sample car so `dotnet run` shows something immediately.
+            // Resolved against the app base directory AND the CWD (a plain relative
+            // path breaks under `dotnet run`, whose CWD is the project directory).
+            // Loads asynchronously so the first frame isn't blocked by model parsing.
+            string? autoLoadPath = FindBundledSampleModel();
+            if (autoLoadPath != null)
             {
-                _pendingModelPath = autoLoadPath;
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try
+                    {
+                        await LoadModelAsync(autoLoadPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[GLViewport] ERROR auto-loading sample model: {ex.Message}");
+                    }
+                });
             }
         }
         catch (Exception ex)
@@ -600,13 +621,17 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         
         if (usePostProcessing)
         {
+            // Post-processing passes (G-buffer, SSAO, bloom, composite) write
+            // single-channel/HDR data and must not run with alpha blending on.
+            _gl!.Disable(EnableCap.Blend);
+
             // Step 0: Render shadow map with top-down light for floor shadows
             Vector3 lightDir = GetMainLightDir();
             Vector3 sceneCenter = _model!.Center;
             float sceneRadius = _model.Radius;
-            
+
             _shadowMap!.BeginRender(lightDir, sceneCenter, sceneRadius);
-            
+
             // Only render model to shadow map (not ground - ground receives shadows, doesn't cast them)
             foreach (var mesh in _model.Meshes)
             {
@@ -614,15 +639,16 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
                 mesh.Draw();
             }
             _shadowMap.EndRender(viewportWidth, viewportHeight);
-            
-            // Step 1: Render G-buffer for SSAO
+
+            // Step 1: Render G-buffer (view-space position/normal) for SSAO.
+            // Uses the lightweight geometry shader, NOT the full PBR shader.
             _gBuffer!.BeginRender();
-            _gl!.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-            RenderSceneGeometry(model, view, projection);
+            RenderGeometryPass(model, view, projection);
             _gBuffer.EndRender();
-            
-            // Step 2: Generate SSAO
-            _ssaoEffect!.Render(_gBuffer.PositionTexture, _gBuffer.NormalTexture, projection, _screenQuad!);
+
+            // Step 2: Generate SSAO (radius scaled to model size)
+            float ssaoRadius = Math.Clamp(sceneRadius * 0.1f, 0.05f, 5.0f);
+            _ssaoEffect!.Render(_gBuffer.PositionTexture, _gBuffer.NormalTexture, projection, _screenQuad!, ssaoRadius);
             
             // Step 3: Render scene to HDR framebuffer
             if (UseMSAA && _hdrMsaaFBO != 0)
@@ -930,6 +956,30 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         e.Handled = true;
     }
 
+    /// <summary>
+    /// Finds the bundled sample car relative to the app/output directory,
+    /// walking up a few levels so it works for `dotnet run` from the repo root.
+    /// </summary>
+    private static string? FindBundledSampleModel()
+    {
+        string relative = Path.Combine("sample-models", "1969_dodge_charger_rt.glb");
+
+        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        {
+            string? dir = start;
+            for (int i = 0; i < 6 && !string.IsNullOrEmpty(dir); i++)
+            {
+                string candidate = Path.Combine(dir, relative);
+                if (File.Exists(candidate))
+                    return candidate;
+
+                dir = Path.GetDirectoryName(dir);
+            }
+        }
+
+        return null;
+    }
+
     public void LoadModel(string path)
     {
         // Cancel any ongoing async load and drop any pending CPU-side model data
@@ -1188,6 +1238,108 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
     }
 
+    /// <summary>
+    /// Resolves how a material's alpha should be handled (opaque/mask/blend).
+    /// Shared by the PBR pass and the G-buffer geometry pass.
+    /// </summary>
+    private int ResolveAlphaMode(Assimp.Material assimpMaterial, LoadedMaterialTextures loadedTextures, out float alphaCutoff)
+    {
+        alphaCutoff = DefaultAlphaCutoff;
+
+        // PRIORITY 1: Check for explicit glTF alphaMode property
+        // This is the authoritative source for glTF/GLB files
+        var gltfMode = MaterialHelper.GetGltfAlphaMode(assimpMaterial);
+        if (gltfMode != Rendering.AlphaMode.Unknown)
+        {
+            alphaCutoff = MaterialHelper.GetGltfAlphaCutoff(assimpMaterial);
+            float opacity = MaterialHelper.GetOpacity(assimpMaterial);
+
+            // Special case: BLEND with full material opacity (1.0) often means the material
+            // uses a texture atlas with alpha for decals/cutouts on otherwise opaque geometry.
+            // Treat as MASK to get crisp cutouts and proper depth handling instead of
+            // unwanted semi-transparency on opaque parts.
+            if (gltfMode == Rendering.AlphaMode.Blend && opacity >= 0.99f)
+            {
+                // Use a lower alpha cutoff to preserve more detail in decals
+                alphaCutoff = Math.Max(alphaCutoff, 0.1f);
+                return AlphaMask;
+            }
+
+            return gltfMode switch
+            {
+                Rendering.AlphaMode.Opaque => AlphaOpaque,
+                Rendering.AlphaMode.Mask => AlphaMask,
+                Rendering.AlphaMode.Blend => AlphaBlend,
+                _ => AlphaOpaque
+            };
+        }
+
+        // PRIORITY 2: For non-glTF formats, use heuristics
+        // Check material opacity first
+        float matOpacity = MaterialHelper.GetOpacity(assimpMaterial);
+        if (matOpacity < 0.99f)
+            return AlphaBlend;
+
+        // Check texture alpha
+        var albedoTex = loadedTextures.AlbedoMap;
+        if (albedoTex != null && albedoTex.HasNonOpaqueAlpha)
+        {
+            // Heuristic:
+            // - Mostly-binary alpha => decals/labels/leaf cutouts => MASK (alpha-test, depth write)
+            // - Lots of partial alpha => glass/soft transparency => BLEND
+            return albedoTex.IsMostlyBinaryAlpha ? AlphaMask : AlphaBlend;
+        }
+
+        return AlphaOpaque;
+    }
+
+    /// <summary>
+    /// Renders the model's non-blended geometry into the G-buffer using the
+    /// lightweight geometry shader (view-space position/normal for SSAO).
+    /// </summary>
+    private void RenderGeometryPass(Matrix4x4 model, Matrix4x4 view, Matrix4x4 projection)
+    {
+        if (_model == null || _gBuffer == null || _gl == null) return;
+
+        _gBuffer.UseShader();
+        _gBuffer.SetUniforms(model, view, projection);
+
+        foreach (var mesh in _model.Meshes)
+        {
+            // Skip blended transparency (glass, etc.): it shouldn't occlude in SSAO.
+            bool alphaMask = false;
+            float alphaCutoff = DefaultAlphaCutoff;
+            Avalonia3DViewer.Rendering.Texture? albedoMap = null;
+
+            int matIndex = mesh.MaterialIndex;
+            if (matIndex >= 0 && matIndex < _model.Materials.Count)
+            {
+                var loadedTextures = _model.LoadedTextures[matIndex];
+                int alphaMode = ResolveAlphaMode(_model.Materials[matIndex], loadedTextures, out alphaCutoff);
+                if (alphaMode == AlphaBlend)
+                    continue;
+
+                // Cutout materials (grilles, decals) need the alpha test in the
+                // G-buffer too, otherwise their holes occlude in SSAO.
+                if (alphaMode == AlphaMask && loadedTextures.AlbedoMap != null)
+                {
+                    alphaMask = true;
+                    albedoMap = loadedTextures.AlbedoMap;
+                }
+            }
+
+            _gBuffer.SetAlphaMask(alphaMask, alphaCutoff);
+
+            // Always keep a valid 2D texture on unit 0 (the sampler's default):
+            // empty units trigger "texture unloadable" warnings on macOS.
+            _gl.ActiveTexture(TextureUnit.Texture0);
+            _gl.BindTexture(TextureTarget.Texture2D,
+                albedoMap?.Handle ?? _iblEnvironment?.BrdfLUT ?? 0);
+
+            mesh.Draw();
+        }
+    }
+
     // Helper to render scene geometry to specified framebuffer
     private void RenderSceneGeometry(Matrix4x4 model, Matrix4x4 view, Matrix4x4 projection)
     {
@@ -1195,57 +1347,6 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
 
         int meshCount = 0;
 
-        int ResolveAlphaMode(Assimp.Material assimpMaterial, LoadedMaterialTextures loadedTextures, out float alphaCutoff)
-        {
-            alphaCutoff = DefaultAlphaCutoff;
-
-            // PRIORITY 1: Check for explicit glTF alphaMode property
-            // This is the authoritative source for glTF/GLB files
-            var gltfMode = MaterialHelper.GetGltfAlphaMode(assimpMaterial);
-            if (gltfMode != Rendering.AlphaMode.Unknown)
-            {
-                alphaCutoff = MaterialHelper.GetGltfAlphaCutoff(assimpMaterial);
-                float opacity = MaterialHelper.GetOpacity(assimpMaterial);
-                
-                // Special case: BLEND with full material opacity (1.0) often means the material
-                // uses a texture atlas with alpha for decals/cutouts on otherwise opaque geometry.
-                // Treat as MASK to get crisp cutouts and proper depth handling instead of
-                // unwanted semi-transparency on opaque parts.
-                if (gltfMode == Rendering.AlphaMode.Blend && opacity >= 0.99f)
-                {
-                    // Use a lower alpha cutoff to preserve more detail in decals
-                    alphaCutoff = Math.Max(alphaCutoff, 0.1f);
-                    return AlphaMask;
-                }
-                
-                return gltfMode switch
-                {
-                    Rendering.AlphaMode.Opaque => AlphaOpaque,
-                    Rendering.AlphaMode.Mask => AlphaMask,
-                    Rendering.AlphaMode.Blend => AlphaBlend,
-                    _ => AlphaOpaque
-                };
-            }
-
-            // PRIORITY 2: For non-glTF formats, use heuristics
-            // Check material opacity first
-            float matOpacity = MaterialHelper.GetOpacity(assimpMaterial);
-            if (matOpacity < 0.99f)
-                return AlphaBlend;
-
-            // Check texture alpha
-            var albedoTex = loadedTextures.AlbedoMap;
-            if (albedoTex != null && albedoTex.HasNonOpaqueAlpha)
-            {
-                // Heuristic:
-                // - Mostly-binary alpha => decals/labels/leaf cutouts => MASK (alpha-test, depth write)
-                // - Lots of partial alpha => glass/soft transparency => BLEND
-                return albedoTex.IsMostlyBinaryAlpha ? AlphaMask : AlphaBlend;
-            }
-
-            return AlphaOpaque;
-        }
-        
         _pbrShader.Use();
         // Default for regular meshes.
         _pbrShader.SetUniform("shadowCatcher", false);
@@ -1410,7 +1511,11 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         _pbrShader.SetUniform("opacity", MaterialHelper.GetOpacity(assimpMaterial));
         _pbrShader.SetUniform("alphaMode", alphaMode);
         _pbrShader.SetUniform("alphaCutoff", alphaCutoff);
-        
+
+        // glTF factor × texture rule (1.0 for formats without factors)
+        _pbrShader.SetUniform("metallicTexScale", MaterialHelper.GetMetallicTextureScale(assimpMaterial));
+        _pbrShader.SetUniform("roughnessTexScale", MaterialHelper.GetRoughnessTextureScale(assimpMaterial));
+
         // Bind material textures
         BindMaterialTextures(loadedTextures);
     }
@@ -1432,61 +1537,62 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         _pbrShader.SetUniform("useMetallicMap", false);
         _pbrShader.SetUniform("useRoughnessMap", false);
         _pbrShader.SetUniform("useAOMap", false);
+        _pbrShader.SetUniform("metallicChannel", 0);
+        _pbrShader.SetUniform("roughnessChannel", 0);
+        _pbrShader.SetUniform("aoChannel", 0);
+        _pbrShader.SetUniform("roughnessInvert", false);
+        _pbrShader.SetUniform("metallicTexScale", 1.0f);
+        _pbrShader.SetUniform("roughnessTexScale", 1.0f);
     }
-    
+
     /// <summary>
     /// Binds material textures to appropriate texture units.
     /// </summary>
     private void BindMaterialTextures(LoadedMaterialTextures textures)
     {
+        // Tell the shader which channel holds each scalar value
+        // (glTF packs occlusion/roughness/metallic into R/G/B of one texture;
+        // specular-glossiness stores glossiness in A and needs inversion).
+        _pbrShader!.SetUniform("metallicChannel", textures.MetallicChannel);
+        _pbrShader.SetUniform("roughnessChannel", textures.RoughnessChannel);
+        _pbrShader.SetUniform("aoChannel", textures.AoChannel);
+        _pbrShader.SetUniform("roughnessInvert", textures.RoughnessInvert);
+
+        // NOTE: every sampler unit gets SOMETHING valid bound, even when the map
+        // is absent (the dummy is never sampled because useXxxMap is false).
+        // Leaving a unit empty triggers driver warnings on macOS
+        // ("texture unloadable - using zero texture") and is undefined-ish.
+        uint dummy2D = _iblEnvironment?.BrdfLUT ?? 0;
+
         // Albedo (texture unit 0)
         _gl!.ActiveTexture(TextureUnit.Texture0);
         _pbrShader!.SetUniform("useAlbedoMap", textures.AlbedoMap != null);
-        if (textures.AlbedoMap != null)
-        {
-            _gl.BindTexture(TextureTarget.Texture2D, textures.AlbedoMap.Handle);
-            _pbrShader.SetUniform("albedoMap", 0);
-        }
-        else
-        {
-            _gl.BindTexture(TextureTarget.Texture2D, _iblEnvironment?.BrdfLUT ?? 0);
-        }
+        _gl.BindTexture(TextureTarget.Texture2D, textures.AlbedoMap?.Handle ?? dummy2D);
+        _pbrShader.SetUniform("albedoMap", 0);
 
         // Normal (texture unit 1)
         _pbrShader.SetUniform("useNormalMap", textures.NormalMap != null);
-        if (textures.NormalMap != null)
-        {
-            _gl.ActiveTexture(TextureUnit.Texture1);
-            _gl.BindTexture(TextureTarget.Texture2D, textures.NormalMap.Handle);
-            _pbrShader.SetUniform("normalMap", 1);
-        }
+        _gl.ActiveTexture(TextureUnit.Texture1);
+        _gl.BindTexture(TextureTarget.Texture2D, textures.NormalMap?.Handle ?? dummy2D);
+        _pbrShader.SetUniform("normalMap", 1);
 
         // Metallic (texture unit 2)
         _pbrShader.SetUniform("useMetallicMap", textures.MetallicMap != null);
-        if (textures.MetallicMap != null)
-        {
-            _gl.ActiveTexture(TextureUnit.Texture2);
-            _gl.BindTexture(TextureTarget.Texture2D, textures.MetallicMap.Handle);
-            _pbrShader.SetUniform("metallicMap", 2);
-        }
+        _gl.ActiveTexture(TextureUnit.Texture2);
+        _gl.BindTexture(TextureTarget.Texture2D, textures.MetallicMap?.Handle ?? dummy2D);
+        _pbrShader.SetUniform("metallicMap", 2);
 
         // Roughness (texture unit 6)
         _pbrShader.SetUniform("useRoughnessMap", textures.RoughnessMap != null);
-        if (textures.RoughnessMap != null)
-        {
-            _gl.ActiveTexture(TextureUnit.Texture6);
-            _gl.BindTexture(TextureTarget.Texture2D, textures.RoughnessMap.Handle);
-            _pbrShader.SetUniform("roughnessMap", 6);
-        }
+        _gl.ActiveTexture(TextureUnit.Texture6);
+        _gl.BindTexture(TextureTarget.Texture2D, textures.RoughnessMap?.Handle ?? dummy2D);
+        _pbrShader.SetUniform("roughnessMap", 6);
 
         // Ambient Occlusion (texture unit 7)
         _pbrShader.SetUniform("useAOMap", textures.AOMap != null);
-        if (textures.AOMap != null)
-        {
-            _gl.ActiveTexture(TextureUnit.Texture7);
-            _gl.BindTexture(TextureTarget.Texture2D, textures.AOMap.Handle);
-            _pbrShader.SetUniform("aoMap", 7);
-        }
+        _gl.ActiveTexture(TextureUnit.Texture7);
+        _gl.BindTexture(TextureTarget.Texture2D, textures.AOMap?.Handle ?? dummy2D);
+        _pbrShader.SetUniform("aoMap", 7);
     }
     
     /// <summary>

@@ -652,7 +652,7 @@ public partial class MainWindow : Window
             {
                 new FilePickerFileType("HDRI Images")
                 {
-                    Patterns = new[] { "*.hdr", "*.exr", "*.jpg", "*.jpeg" }
+                    Patterns = new[] { "*.hdr", "*.jpg", "*.jpeg", "*.png" }
                 },
                 new FilePickerFileType("All Files") { Patterns = new[] { "*.*" } }
             }
