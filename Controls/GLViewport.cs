@@ -58,6 +58,7 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
     
     private string? _pendingModelPath;
     private string? _pendingEnvironmentPath;
+    private bool _pendingClearEnvironment;
     
     // Async model loading
     private ModelLoadData? _pendingModelData;
@@ -506,14 +507,20 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         // Note: Only ONE of these will be set per frame - they are mutually exclusive paths
         ProcessPendingModelLoad();
         
-        // Process pending environment load on render thread
+        // Process pending environment load/clear on render thread
         string? pendingEnvPath = null;
+        bool pendingClearEnv = false;
         lock (_pendingLoadLock)
         {
             if (_pendingEnvironmentPath != null)
             {
                 pendingEnvPath = _pendingEnvironmentPath;
                 _pendingEnvironmentPath = null;
+            }
+            if (_pendingClearEnvironment)
+            {
+                pendingClearEnv = true;
+                _pendingClearEnvironment = false;
             }
         }
         if (pendingEnvPath != null && _iblEnvironment != null)
@@ -525,6 +532,17 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
             catch (Exception ex)
             {
                 Console.WriteLine($"[GLViewport] ERROR loading environment: {ex.Message}");
+            }
+        }
+        else if (pendingClearEnv && _iblEnvironment != null)
+        {
+            try
+            {
+                _iblEnvironment.ClearEnvironment();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GLViewport] ERROR clearing environment: {ex.Message}");
             }
         }
 
@@ -1079,6 +1097,21 @@ public class GLViewport : OpenGlControlBase, ICustomHitTest
         lock (_pendingLoadLock)
         {
             _pendingEnvironmentPath = path;
+            _pendingClearEnvironment = false;
+        }
+        RequestNextFrameRendering();
+    }
+
+    /// <summary>
+    /// Removes the currently loaded HDRI environment. Rendering falls back to the
+    /// procedural sky. Safe to call when no HDRI is loaded.
+    /// </summary>
+    public void ClearEnvironment()
+    {
+        lock (_pendingLoadLock)
+        {
+            _pendingClearEnvironment = true;
+            _pendingEnvironmentPath = null;
         }
         RequestNextFrameRendering();
     }
