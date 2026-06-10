@@ -84,9 +84,14 @@
                               FontWeight="SemiBold" 
                               Foreground="White"
                               Margin="0,8,0,0"/>
-                    <Button x:Name="LoadEnvironmentButton" 
+                    <Button x:Name="LoadEnvironmentButton"
                            Content="Load HDRI..."
                            HorizontalAlignment="Stretch"/>
+                    <Button x:Name="RemoveEnvironmentButton"
+                           Content="Remove HDRI"
+                           HorizontalAlignment="Stretch"
+                           IsEnabled="False"
+                           Margin="0,4,0,0"/>
 
                     <Separator/>
 

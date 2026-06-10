@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private Slider? _tonemapCompensationSlider;
     private TextBlock? _infoText;
     private Button? _runGcButton;
+    private Button? _removeEnvironmentButton;
     
     private ComboBox? _modelComboBox;
     private readonly ModelLibrary _modelLibrary = new();
@@ -236,11 +237,13 @@ public partial class MainWindow : Window
     {
         var loadModelButton = this.FindControl<Button>("LoadModelButton");
         var loadEnvironmentButton = this.FindControl<Button>("LoadEnvironmentButton");
+        _removeEnvironmentButton = this.FindControl<Button>("RemoveEnvironmentButton");
         var addModelButton = this.FindControl<Button>("AddModelButton");
         var removeModelButton = this.FindControl<Button>("RemoveModelButton");
 
         if (loadModelButton != null) loadModelButton.Click += LoadModelButton_Click;
         if (loadEnvironmentButton != null) loadEnvironmentButton.Click += LoadEnvironmentButton_Click;
+        if (_removeEnvironmentButton != null) _removeEnvironmentButton.Click += RemoveEnvironmentButton_Click;
         if (addModelButton != null) addModelButton.Click += AddModelButton_Click;
         if (removeModelButton != null) removeModelButton.Click += RemoveModelButton_Click;
         if (_runGcButton != null) _runGcButton.Click += RunGcButton_Click;
@@ -666,6 +669,8 @@ public partial class MainWindow : Window
         try
         {
             _viewport.LoadEnvironment(path);
+            if (_removeEnvironmentButton != null)
+                _removeEnvironmentButton.IsEnabled = true;
             if (_infoText != null)
                 _infoText.Text = $"Environment: {System.IO.Path.GetFileName(path)}";
         }
@@ -674,6 +679,26 @@ public partial class MainWindow : Window
             if (_infoText != null)
                 _infoText.Text = $"Error: {ex.Message}";
             Console.WriteLine($"[MainWindow] Error loading environment: {ex.Message}");
+        }
+    }
+
+    private void RemoveEnvironmentButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_viewport == null) return;
+
+        try
+        {
+            _viewport.ClearEnvironment();
+            if (_removeEnvironmentButton != null)
+                _removeEnvironmentButton.IsEnabled = false;
+            if (_infoText != null)
+                _infoText.Text = "Environment: none (procedural sky)";
+        }
+        catch (Exception ex)
+        {
+            if (_infoText != null)
+                _infoText.Text = $"Error: {ex.Message}";
+            Console.WriteLine($"[MainWindow] Error removing environment: {ex.Message}");
         }
     }
 }

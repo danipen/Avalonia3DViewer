@@ -140,6 +140,18 @@ public class IBLEnvironment : IDisposable
         }
     }
 
+    /// <summary>
+    /// Removes the currently loaded HDRI and restores the empty (dummy) state, so
+    /// rendering falls back to the procedural sky. After this call EnvironmentMap is 0.
+    /// </summary>
+    public void ClearEnvironment()
+    {
+        DisposeEnvironmentResources();
+        // Recreate the dummy irradiance/prefilter cubemaps so any sampler fallback
+        // still has valid (non-zero) textures to bind.
+        CreateDummyTextures();
+    }
+
     private void DisposeEnvironmentResources()
     {
         if (EnvironmentMap != 0) { _gl.DeleteTexture(EnvironmentMap); EnvironmentMap = 0; }
