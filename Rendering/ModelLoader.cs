@@ -64,7 +64,18 @@ public class MaterialTexturesData
     public TextureData? MetallicMap { get; set; }
     public TextureData? RoughnessMap { get; set; }
     public TextureData? AOMap { get; set; }
-    
+
+    // Channel each value is stored in (0=R, 1=G, 2=B, 3=A).
+    // glTF packs metallic/roughness (and sometimes AO) into one texture:
+    // R = occlusion, G = roughness, B = metallic.
+    public int MetallicChannel { get; set; }
+    public int RoughnessChannel { get; set; }
+    public int AoChannel { get; set; }
+
+    // Specular-glossiness workflow stores glossiness (= 1 - roughness) in the
+    // texture's alpha channel; the sampled value must then be inverted.
+    public bool RoughnessInvert { get; set; }
+
     /// <summary>
     /// Clears all texture data to free memory after GPU upload.
     /// </summary>
@@ -168,6 +179,15 @@ public static class ModelLoader
         CancellationToken cancellationToken = default)
     {
         return await Task.Run(() => LoadInternal(path, progress, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    /// Synchronous load. Shares the exact same code path as <see cref="LoadAsync"/>,
+    /// so embedded textures, packed glTF channels, etc. behave identically.
+    /// </summary>
+    public static ModelLoadData Load(string path)
+    {
+        return LoadInternal(path, progress: null, cancellationToken: default);
     }
 
     private static ModelLoadData LoadInternal(
@@ -298,44 +318,172 @@ public static class ModelLoader
             }
         }
 
-        // Albedo/Diffuse texture
-        if (mat.HasTextureDiffuse)
+        var plan = PlanMaterialTextures(mat);
+
+        if (plan.Albedo != null)
+            data.AlbedoMap = LoadOne(plan.Albedo, isSrgb: true);
+
+        if (plan.Normal != null)
+            data.NormalMap = LoadOne(plan.Normal, isSrgb: false);
+
+        if (plan.Metallic != null)
+            data.MetallicMap = LoadOne(plan.Metallic, isSrgb: false);
+
+        // Packed textures (same file) come back as the same cached TextureData,
+        // so they are decoded once and can be uploaded to the GPU once.
+        if (plan.Roughness != null)
         {
-            var texSlot = mat.TextureDiffuse;
-            data.AlbedoMap = LoadOne(texSlot.FilePath, isSrgb: true);
+            data.RoughnessMap = plan.Roughness == plan.Metallic
+                ? data.MetallicMap
+                : LoadOne(plan.Roughness, isSrgb: false);
         }
+
+        if (plan.Ao != null)
+        {
+            data.AOMap = plan.Ao == plan.Metallic ? data.MetallicMap
+                : plan.Ao == plan.Roughness ? data.RoughnessMap
+                : LoadOne(plan.Ao, isSrgb: false);
+        }
+
+        data.MetallicChannel = plan.MetallicChannel;
+        data.RoughnessChannel = plan.RoughnessChannel;
+        data.AoChannel = plan.AoChannel;
+        data.RoughnessInvert = plan.RoughnessInvert;
+
+        return data;
+    }
+
+    /// <summary>
+    /// Decides which texture file feeds each material slot and which color
+    /// channel holds the value. Handles the glTF metallic-roughness packing
+    /// (R = occlusion, G = roughness, B = metallic), the specular-glossiness
+    /// workflow, and legacy formats with standalone grayscale maps.
+    /// </summary>
+    private sealed class MaterialTexturePlan
+    {
+        public string? Albedo;
+        public string? Normal;
+        public string? Metallic;
+        public string? Roughness;
+        public string? Ao;
+        public int MetallicChannel;
+        public int RoughnessChannel;
+        public int AoChannel;
+        public bool RoughnessInvert;
+
+        public int PlannedLoadCount()
+        {
+            int count = 0;
+            if (Albedo != null) count++;
+            if (Normal != null) count++;
+            if (Metallic != null) count++;
+            if (Roughness != null && Roughness != Metallic) count++;
+            if (Ao != null && Ao != Metallic && Ao != Roughness) count++;
+            return count;
+        }
+    }
+
+    // PBR texture types from assimp's C API (aiTextureType). This AssimpNetter
+    // version doesn't expose convenience properties (or named enum members are
+    // unreliable) for these, so use the stable numeric values directly.
+    private const TextureType TextureTypeBaseColor = (TextureType)12;        // aiTextureType_BASE_COLOR
+    private const TextureType TextureTypeMetalness = (TextureType)15;        // aiTextureType_METALNESS
+    private const TextureType TextureTypeDiffuseRoughness = (TextureType)16; // aiTextureType_DIFFUSE_ROUGHNESS
+    private const TextureType TextureTypeAmbientOcclusion = (TextureType)17; // aiTextureType_AMBIENT_OCCLUSION
+
+    private static string? GetTexturePath(Assimp.Material mat, TextureType type)
+    {
+        if (mat.GetMaterialTextureCount(type) > 0 &&
+            mat.GetMaterialTexture(type, 0, out TextureSlot slot) &&
+            !string.IsNullOrEmpty(slot.FilePath))
+        {
+            return slot.FilePath;
+        }
+        return null;
+    }
+
+    private static MaterialTexturePlan PlanMaterialTextures(Assimp.Material mat)
+    {
+        var plan = new MaterialTexturePlan();
+
+        // Albedo / base color
+        if (mat.HasTextureDiffuse)
+            plan.Albedo = mat.TextureDiffuse.FilePath;
+        else
+            plan.Albedo = GetTexturePath(mat, TextureTypeBaseColor);
 
         // Normal map
         if (mat.HasTextureNormal)
-        {
-            data.NormalMap = LoadOne(mat.TextureNormal.FilePath, isSrgb: false);
-        }
+            plan.Normal = mat.TextureNormal.FilePath;
         else if (mat.HasTextureHeight)
+            plan.Normal = mat.TextureHeight.FilePath;
+
+        // Specular-glossiness workflow (KHR_materials_pbrSpecularGlossiness,
+        // very common in Sketchfab exports). Assimp puts the specularGlossiness
+        // texture in the Specular slot. It must NOT be used as a metallic map
+        // (that makes skin/cloth look shiny): the material is dielectric, and
+        // glossiness lives in the texture's ALPHA channel (roughness = 1 - A).
+        if (MaterialHelper.IsSpecularGlossiness(mat))
         {
-            data.NormalMap = LoadOne(mat.TextureHeight.FilePath, isSrgb: false);
+            string? sgPath = mat.HasTextureSpecular ? mat.TextureSpecular.FilePath : null;
+            if (!string.IsNullOrEmpty(sgPath))
+            {
+                plan.Roughness = sgPath;
+                plan.RoughnessChannel = 3; // A = glossiness
+                plan.RoughnessInvert = true;
+            }
+            // No metallic map: MaterialHelper.GetMetallic returns 0 for these.
+
+            plan.Ao = GetTexturePath(mat, TextureTypeAmbientOcclusion)
+                      ?? GetTexturePath(mat, TextureType.Lightmap);
+            plan.AoChannel = 0;
+            return plan;
         }
 
-        // Metallic/Specular
-        if (mat.HasTextureSpecular)
+        // Metallic & roughness.
+        // Assimp exposes the glTF metallicRoughness texture through the
+        // Metalness/Roughness slots (both pointing at the same file).
+        string? metalPath = GetTexturePath(mat, TextureTypeMetalness);
+        string? roughPath = GetTexturePath(mat, TextureTypeDiffuseRoughness);
+
+        // Some importers expose the packed texture only as "Unknown".
+        if (metalPath == null && roughPath == null &&
+            mat.GetMaterialTextureCount(TextureType.Unknown) > 0)
         {
-            data.MetallicMap = LoadOne(mat.TextureSpecular.FilePath, isSrgb: false);
+            mat.GetMaterialTexture(TextureType.Unknown, 0, out TextureSlot unknownTex);
+            metalPath = unknownTex.FilePath;
+            roughPath = unknownTex.FilePath;
         }
 
-        // Roughness/Shininess
-        if (mat.GetMaterialTextureCount(TextureType.Shininess) > 0)
+        if (metalPath != null || roughPath != null)
         {
-            mat.GetMaterialTexture(TextureType.Shininess, 0, out TextureSlot tex);
-            data.RoughnessMap = LoadOne(tex.FilePath, isSrgb: false);
+            plan.Metallic = metalPath;
+            plan.Roughness = roughPath;
+            // glTF channel layout. Standalone grayscale maps have R=G=B,
+            // so this stays correct for them too.
+            plan.MetallicChannel = 2;  // B
+            plan.RoughnessChannel = 1; // G
+        }
+        else
+        {
+            // Legacy formats: specular as metallic, shininess as roughness (R channel).
+            if (mat.HasTextureSpecular)
+                plan.Metallic = mat.TextureSpecular.FilePath;
+
+            if (mat.GetMaterialTextureCount(TextureType.Shininess) > 0)
+            {
+                mat.GetMaterialTexture(TextureType.Shininess, 0, out TextureSlot tex);
+                plan.Roughness = tex.FilePath;
+            }
         }
 
-        // AO
-        if (mat.GetMaterialTextureCount(TextureType.Ambient) > 0)
-        {
-            mat.GetMaterialTexture(TextureType.Ambient, 0, out TextureSlot tex);
-            data.AOMap = LoadOne(tex.FilePath, isSrgb: false);
-        }
+        // Ambient occlusion: glTF occlusion uses the R channel.
+        plan.Ao = GetTexturePath(mat, TextureTypeAmbientOcclusion)
+                  ?? GetTexturePath(mat, TextureType.Lightmap)
+                  ?? GetTexturePath(mat, TextureType.Ambient);
+        plan.AoChannel = 0; // R
 
-        return data;
+        return plan;
     }
 
     private static TextureData? LoadTextureData(
@@ -485,14 +633,7 @@ public static class ModelLoader
     {
         int count = 0;
         foreach (var mat in scene.Materials)
-        {
-            // At most one per slot, matching what LoadMaterialTextures actually loads.
-            if (mat.HasTextureDiffuse) count++;
-            if (mat.HasTextureNormal || mat.HasTextureHeight) count++;
-            if (mat.HasTextureSpecular) count++;
-            if (mat.GetMaterialTextureCount(TextureType.Shininess) > 0) count++;
-            if (mat.GetMaterialTextureCount(TextureType.Ambient) > 0) count++;
-        }
+            count += PlanMaterialTextures(mat).PlannedLoadCount();
         return count;
     }
 
