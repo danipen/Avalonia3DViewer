@@ -10,7 +10,7 @@ A cross-platform, real-time 3D model viewer built with [Avalonia UI](https://ava
 
 ### Rendering Pipeline
 - **PBR shading** with full material support: albedo, normal maps, metallic, roughness, and ambient occlusion
-- **Image-Based Lighting (IBL)** — load any equirectangular HDR/EXR image as an environment; a built-in procedural sky is used as a fallback
+- **Image-Based Lighting (IBL)** — load any equirectangular HDR image as an environment; a built-in procedural sky is used as a fallback
 - **Four-light rig** — key, fill, rim, and top lights, each with adjustable intensity
 - **Directional shadow mapping** with a shadow-catcher ground plane (receives shadows but stays invisible)
 - **Alpha modes** — opaque, masked (cutout transparency), and blended
@@ -36,7 +36,7 @@ Powered by [Assimp](https://github.com/assimp/assimp), the viewer can open most 
 
 `OBJ` `FBX` `glTF` `glB` `DAE` `3DS` `Blend` `STL`
 
-Environment maps: `HDR` `EXR` `JPG` `JPEG` (equirectangular projection)
+Environment maps: `HDR` `JPG` `JPEG` `PNG` (equirectangular projection)
 
 ### UI Controls
 The side panel exposes over 30 parameters in real time:

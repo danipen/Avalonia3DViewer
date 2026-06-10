@@ -45,6 +45,12 @@ public class IBLEnvironment : IDisposable
         _gl = gl;
         InitializeFramebuffers();
         CreateDummyTextures();
+
+        // The BRDF LUT does not depend on the environment map, so bake the real
+        // one immediately. Using a dummy (white) LUT here badly over-brightens
+        // IBL specular: brdf.y would add a constant 1.0 to the Fresnel term.
+        _brdfShader = new Shader(_gl, "Shaders/brdf.vert", "Shaders/brdf.frag");
+        BrdfLUT = GenerateBrdfLut(BrdfLutSize);
     }
 
     private void InitializeFramebuffers()
@@ -64,11 +70,9 @@ public class IBLEnvironment : IDisposable
         // NOTE: On ANGLE/GLES3 (D3D11 backend), RGB16F is frequently unsupported while RGBA16F is supported.
         // Using RGBA16F keeps it portable; shaders sample .rgb and ignore alpha.
         float[] blackPixel = { 0.0f, 0.0f, 0.0f, 1.0f };
-        float[] whitePixel = { 1.0f, 1.0f, 1.0f, 1.0f };
 
         IrradianceMap = CreateDummyCubemap(blackPixel);
         PrefilterMap = CreateDummyCubemap(blackPixel);
-        BrdfLUT = CreateDummy2DTexture(whitePixel);
     }
 
     private unsafe uint CreateDummyCubemap(float[] pixel)
@@ -94,51 +98,46 @@ public class IBLEnvironment : IDisposable
         return cubemap;
     }
 
-    private unsafe uint CreateDummy2DTexture(float[] pixel)
-    {
-        uint texture = _gl.GenTexture();
-        _gl.BindTexture(TextureTarget.Texture2D, texture);
-        
-        fixed (float* ptr = pixel)
-        {
-            _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba16f, 1, 1, 0,
-                PixelFormat.Rgba, PixelType.Float, ptr);
-        }
-
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
-        _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
-
-        return texture;
-    }
-
     public void LoadEnvironment(string hdriPath)
     {
         DisposeEnvironmentResources();
-        
+
         _equirectToCubemapShader = new Shader(_gl, "Shaders/cubemap.vert", "Shaders/equirect_to_cubemap.frag");
         _irradianceShader = new Shader(_gl, "Shaders/cubemap.vert", "Shaders/irradiance_convolution.frag");
         _prefilterShader = new Shader(_gl, "Shaders/cubemap.vert", "Shaders/prefilter.frag");
-        _brdfShader = new Shader(_gl, "Shaders/brdf.vert", "Shaders/brdf.frag");
 
         _cube = Mesh.CreateCube(_gl);
 
         using var hdrTexture = Texture.LoadHDR(_gl, hdriPath);
 
-        EnvironmentMap = CreateCubemap(EnvCubemapSize, mipmap: true);
-        ConvertEquirectangularToCubemap(hdrTexture.Handle, EnvironmentMap, EnvCubemapSize);
-        
-        _gl.BindTexture(TextureTarget.TextureCubeMap, EnvironmentMap);
-        _gl.GenerateMipmap(TextureTarget.TextureCubeMap);
+        // The capture cube is rendered from the inside, so back-face culling
+        // (enabled by the viewport) would discard everything.
+        bool cullWasEnabled = _gl.IsEnabled(EnableCap.CullFace);
+        _gl.Disable(EnableCap.CullFace);
 
-        IrradianceMap = CreateCubemap(IrradianceSize);
-        GenerateIrradianceMap(EnvironmentMap, IrradianceMap, IrradianceSize);
+        try
+        {
+            EnvironmentMap = CreateCubemap(EnvCubemapSize, mipmap: true);
+            ConvertEquirectangularToCubemap(hdrTexture.Handle, EnvironmentMap, EnvCubemapSize);
 
-        PrefilterMap = CreateCubemap(PrefilterSize, mipmap: true);
-        GeneratePrefilterMap(EnvironmentMap, PrefilterMap, PrefilterSize);
+            _gl.BindTexture(TextureTarget.TextureCubeMap, EnvironmentMap);
+            _gl.GenerateMipmap(TextureTarget.TextureCubeMap);
 
-        BrdfLUT = GenerateBrdfLut(BrdfLutSize);
+            IrradianceMap = CreateCubemap(IrradianceSize);
+            GenerateIrradianceMap(EnvironmentMap, IrradianceMap, IrradianceSize);
+
+            PrefilterMap = CreateCubemap(PrefilterSize, mipmap: true);
+            // Only mips 0..(PrefilterMipLevels-1) are rendered; clamp sampling so the
+            // auto-generated (uninitialized) tail mips are never read.
+            _gl.BindTexture(TextureTarget.TextureCubeMap, PrefilterMap);
+            _gl.TexParameter(TextureTarget.TextureCubeMap, TextureParameterName.TextureMaxLevel, (int)PrefilterMipLevels - 1);
+            GeneratePrefilterMap(EnvironmentMap, PrefilterMap, PrefilterSize);
+        }
+        finally
+        {
+            if (cullWasEnabled)
+                _gl.Enable(EnableCap.CullFace);
+        }
     }
 
     private void DisposeEnvironmentResources()
@@ -146,17 +145,12 @@ public class IBLEnvironment : IDisposable
         if (EnvironmentMap != 0) { _gl.DeleteTexture(EnvironmentMap); EnvironmentMap = 0; }
         if (IrradianceMap != 0) { _gl.DeleteTexture(IrradianceMap); IrradianceMap = 0; }
         if (PrefilterMap != 0) { _gl.DeleteTexture(PrefilterMap); PrefilterMap = 0; }
-        if (BrdfLUT != 0) { _gl.DeleteTexture(BrdfLUT); BrdfLUT = 0; }
-        
+
         _equirectToCubemapShader?.Dispose(); _equirectToCubemapShader = null;
         _irradianceShader?.Dispose(); _irradianceShader = null;
         _prefilterShader?.Dispose(); _prefilterShader = null;
-        _brdfShader?.Dispose(); _brdfShader = null;
-        
+
         _cube?.Dispose(); _cube = null;
-        
-        if (_quadVAO != 0) { _gl.DeleteVertexArray(_quadVAO); _quadVAO = 0; }
-        if (_quadVBO != 0) { _gl.DeleteBuffer(_quadVBO); _quadVBO = 0; }
     }
 
     private unsafe uint CreateCubemap(uint resolution, bool mipmap = false)
@@ -212,9 +206,7 @@ public class IBLEnvironment : IDisposable
         var captureProjection = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 2.0f, 1.0f, 0.1f, 10.0f);
         _irradianceShader.SetUniform("projection", captureProjection);
 
-        _gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _captureRBO);
-        _gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent24, resolution, resolution);
-
+        // RenderToCubemapFaces resizes the shared depth renderbuffer itself.
         RenderToCubemapFaces(irradianceMap, resolution, view => _irradianceShader.SetUniform("view", view));
     }
 
@@ -260,6 +252,12 @@ public class IBLEnvironment : IDisposable
     private void RenderToCubemapFaces(uint cubemap, uint resolution, Action<Matrix4x4> setView)
     {
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _captureFBO);
+
+        // Make sure the shared depth renderbuffer matches the target resolution
+        // (it may be left at a different size by a previous capture pass).
+        _gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _captureRBO);
+        _gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent24, resolution, resolution);
+
         _gl.Viewport(0, 0, resolution, resolution);
 
         for (int i = 0; i < 6; i++)
@@ -280,8 +278,10 @@ public class IBLEnvironment : IDisposable
         uint brdfLUT = _gl.GenTexture();
         _gl.BindTexture(TextureTarget.Texture2D, brdfLUT);
 
-        _gl.TexImage2D((GLEnum)TextureTarget.Texture2D, 0, 0x822F, resolution, resolution, 0, 
-            (GLEnum)0x8227, (GLEnum)PixelType.Float, null);
+        // RGBA16F: portable across desktop GL and ANGLE/GLES3 (RG16F is not
+        // reliably color-renderable on ES). The shader writes (A, B, 0, 1).
+        _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba16f, resolution, resolution, 0,
+            PixelFormat.Rgba, PixelType.Float, null);
 
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
@@ -310,10 +310,11 @@ public class IBLEnvironment : IDisposable
         if (_quadVAO == 0)
         {
             float[] quadVertices = {
-                -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-                -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-                 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-                 1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+                // pos        // uv
+                -1.0f,  1.0f, 0.0f, 1.0f,
+                -1.0f, -1.0f, 0.0f, 0.0f,
+                 1.0f,  1.0f, 1.0f, 1.0f,
+                 1.0f, -1.0f, 1.0f, 0.0f,
             };
 
             _quadVAO = _gl.GenVertexArray();
@@ -326,10 +327,11 @@ public class IBLEnvironment : IDisposable
                 _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(quadVertices.Length * sizeof(float)), v, BufferUsageARB.StaticDraw);
             }
 
+            // Attribute conventions match Shader.cs bindings: 0 = aPos, 2 = aTexCoord.
             _gl.EnableVertexAttribArray(0);
-            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 5 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(1);
-            _gl.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+            _gl.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 4 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray(2);
+            _gl.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, 4 * sizeof(float), (void*)(2 * sizeof(float)));
         }
 
         _gl.BindVertexArray(_quadVAO);
@@ -340,9 +342,13 @@ public class IBLEnvironment : IDisposable
     public void Dispose()
     {
         DisposeEnvironmentResources();
-        
+
+        if (BrdfLUT != 0) { _gl.DeleteTexture(BrdfLUT); BrdfLUT = 0; }
+        _brdfShader?.Dispose(); _brdfShader = null;
+
         if (_captureFBO != 0) { _gl.DeleteFramebuffer(_captureFBO); _captureFBO = 0; }
         if (_captureRBO != 0) { _gl.DeleteRenderbuffer(_captureRBO); _captureRBO = 0; }
+        if (_quadVAO != 0) { _gl.DeleteVertexArray(_quadVAO); _quadVAO = 0; }
         if (_quadVBO != 0) { _gl.DeleteBuffer(_quadVBO); _quadVBO = 0; }
     }
 }
