@@ -123,22 +123,26 @@ public class SSAOEffect : IDisposable
         return texture;
     }
 
-    public void Render(uint gPositionTexture, uint gNormalTexture, Matrix4x4 projection, ScreenQuad quad)
+    /// <param name="radius">Occlusion sampling radius in view-space units. Scale this
+    /// with the model size: a fixed radius under/over-occludes depending on scale.</param>
+    public void Render(uint gPositionTexture, uint gNormalTexture, Matrix4x4 projection, ScreenQuad quad, float radius = 0.5f)
     {
-        RenderSsaoPass(gPositionTexture, gNormalTexture, projection, quad);
+        RenderSsaoPass(gPositionTexture, gNormalTexture, projection, quad, radius);
         RenderBlurPass(quad);
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
     }
 
-    private void RenderSsaoPass(uint gPositionTexture, uint gNormalTexture, Matrix4x4 projection, ScreenQuad quad)
+    private void RenderSsaoPass(uint gPositionTexture, uint gNormalTexture, Matrix4x4 projection, ScreenQuad quad, float radius)
     {
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _ssaoFBO);
         _gl.Clear(ClearBufferMask.ColorBufferBit);
-        
+
         _ssaoShader.Use();
         _ssaoShader.SetUniform("projection", projection);
         _ssaoShader.SetUniform("noiseScale", new Vector2(_width / (float)NoiseSize, _height / (float)NoiseSize));
-        
+        _ssaoShader.SetUniform("radius", radius);
+        _ssaoShader.SetUniform("bias", radius * 0.05f);
+
         for (int i = 0; i < KernelSize; ++i)
             _ssaoShader.SetUniform($"samples[{i}]", _ssaoKernel[i]);
         

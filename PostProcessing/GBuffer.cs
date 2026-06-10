@@ -120,6 +120,10 @@ public class GBuffer : IDisposable
     public void BeginRender()
     {
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _gBuffer);
+
+        // Clear to zero (NOT the scene background color) so empty pixels are
+        // identifiable: SSAO treats zero-normal pixels as "no geometry".
+        _gl.ClearColor(0f, 0f, 0f, 0f);
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
     }
 
@@ -131,6 +135,19 @@ public class GBuffer : IDisposable
     public void UseShader()
     {
         _geometryShader.Use();
+    }
+
+    /// <summary>
+    /// Enables/disables the alpha-cutout test for the next draw. When enabled,
+    /// the caller must bind the albedo texture to texture unit 0.
+    /// </summary>
+    public void SetAlphaMask(bool enabled, float cutoff)
+    {
+        _geometryShader.SetUniform("alphaMask", enabled);
+        _geometryShader.SetUniform("alphaCutoff", cutoff);
+        _geometryShader.SetUniform("useAlbedoMap", enabled);
+        if (enabled)
+            _geometryShader.SetUniform("albedoMap", 0);
     }
 
     public void SetUniforms(Matrix4x4 model, Matrix4x4 view, Matrix4x4 projection)
