@@ -10,14 +10,26 @@ public class ProceduralHDRI : IDisposable
     private uint _envCubemap;
     private uint _irradianceMap;
     private uint _prefilterMap;
-    
+
     private const int EnvSize = 512;
     private const int IrradianceSize = 32;
     private const int PrefilterSize = 128;
+    // 128 -> 1 px: 8 mip levels (0..7), matching MAX_REFLECTION_LOD = 7.0 in pbr.frag.
+    private const int PrefilterMipLevels = 8;
 
     public uint EnvironmentMap => _envCubemap;
     public uint IrradianceMap => _irradianceMap;
     public uint PrefilterMap => _prefilterMap;
+
+    private static readonly Matrix4x4[] CaptureViews =
+    {
+        Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(1, 0, 0), new Vector3(0, -1, 0)),
+        Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(-1, 0, 0), new Vector3(0, -1, 0)),
+        Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, 1, 0), new Vector3(0, 0, 1)),
+        Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, -1, 0), new Vector3(0, 0, -1)),
+        Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, 0, 1), new Vector3(0, -1, 0)),
+        Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, 0, -1), new Vector3(0, -1, 0))
+    };
 
     public ProceduralHDRI(GL gl)
     {
@@ -27,41 +39,169 @@ public class ProceduralHDRI : IDisposable
 
     private void GenerateProceduralSky()
     {
-        _envCubemap = CreateCubemapWithData(EnvSize, face => GenerateSkyGradient(face, EnvSize));
-        _irradianceMap = CreateCubemapWithData(IrradianceSize, GenerateIrradiance);
-        // Prefilter map uses the same sky at full intensity; mipmaps approximate
-        // increasing roughness (sampled via textureLod in the PBR shader).
-        _prefilterMap = CreateCubemapWithMipmaps(PrefilterSize, face => GenerateSkyGradient(face, PrefilterSize));
+        // Analytic sky -> environment cubemap. Mipmaps are required because the
+        // prefilter pass importance-samples it via textureLod to avoid fireflies.
+        _envCubemap = CreateCubemapWithMipmaps(EnvSize, face => GenerateSkyGradient(face, EnvSize));
+
+        // Convolve the sky with the SAME GPU passes used for loaded HDRIs.
+        //
+        // IMPORTANT: auto-generated box mipmaps are NOT a substitute for GGX
+        // prefiltering. They blur far less than the GGX lobe at equivalent mip
+        // levels, so the sun hotspot stays concentrated and mid-roughness
+        // materials pick up 2-3x too much specular energy (everything looks
+        // glossy/oily). Likewise, a hand-painted gradient is not a substitute
+        // for the cosine-convolved irradiance: it misses the sun's diffuse
+        // energy entirely (~1.5x too dark), further inflating the
+        // specular-to-diffuse ratio.
+        BakeIblMaps();
     }
 
-    private uint CreateCubemapWithData(int size, Func<int, Vector3[]> generateFaceData)
+    /// <summary>
+    /// Runs the irradiance cosine convolution and the GGX specular prefilter
+    /// over the procedural environment cubemap, mirroring IBLEnvironment.
+    /// Baking resources are created and destroyed here: the procedural sky is
+    /// static, so this runs exactly once.
+    /// </summary>
+    private void BakeIblMaps()
     {
-        uint cubemap = _gl.GenTexture();
-        _gl.BindTexture(TextureTarget.TextureCubeMap, cubemap);
-        
-        for (int face = 0; face < 6; face++)
+        Shader? irradianceShader = null;
+        Shader? prefilterShader = null;
+        Mesh? cube = null;
+        uint fbo = 0;
+        uint rbo = 0;
+
+        // The capture cube is rendered from the inside; back-face culling
+        // (enabled by the viewport) would discard everything.
+        bool cullWasEnabled = _gl.IsEnabled(EnableCap.CullFace);
+        _gl.Disable(EnableCap.CullFace);
+
+        try
         {
-            Vector3[] colors = generateFaceData(face);
-            UploadCubemapFace(face, size, colors);
+            irradianceShader = new Shader(_gl, "Shaders/cubemap.vert", "Shaders/irradiance_convolution.frag");
+            prefilterShader = new Shader(_gl, "Shaders/cubemap.vert", "Shaders/prefilter.frag");
+            cube = Mesh.CreateCube(_gl);
+
+            fbo = _gl.GenFramebuffer();
+            rbo = _gl.GenRenderbuffer();
+            _gl.BindFramebuffer(FramebufferTarget.Framebuffer, fbo);
+            _gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, rbo);
+            _gl.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment,
+                RenderbufferTarget.Renderbuffer, rbo);
+
+            var captureProjection = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 2.0f, 1.0f, 0.1f, 10.0f);
+
+            // --- Diffuse irradiance (cosine convolution of the actual sky + sun) ---
+            _irradianceMap = CreateEmptyCubemap(IrradianceSize, mipmap: false);
+
+            irradianceShader.Use();
+            irradianceShader.SetUniform("environmentMap", 0);
+            irradianceShader.SetUniform("projection", captureProjection);
+            _gl.ActiveTexture(TextureUnit.Texture0);
+            _gl.BindTexture(TextureTarget.TextureCubeMap, _envCubemap);
+
+            _gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, rbo);
+            _gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent24,
+                (uint)IrradianceSize, (uint)IrradianceSize);
+            _gl.Viewport(0, 0, (uint)IrradianceSize, (uint)IrradianceSize);
+
+            for (int face = 0; face < 6; face++)
+            {
+                irradianceShader.SetUniform("view", CaptureViews[face]);
+                _gl.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0,
+                    TextureTarget.TextureCubeMapPositiveX + face, _irradianceMap, 0);
+
+                _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+                cube.Draw();
+            }
+
+            // --- Specular prefilter (GGX convolution, one roughness per mip) ---
+            _prefilterMap = CreateEmptyCubemap(PrefilterSize, mipmap: true);
+            // 128px base -> full chain is exactly mips 0..7, all rendered below.
+            // The MaxLevel clamp just makes that contract explicit (and keeps the
+            // code symmetric with IBLEnvironment, where the clamp is load-bearing).
+            _gl.BindTexture(TextureTarget.TextureCubeMap, _prefilterMap);
+            _gl.TexParameter(TextureTarget.TextureCubeMap, TextureParameterName.TextureMaxLevel, PrefilterMipLevels - 1);
+
+            prefilterShader.Use();
+            prefilterShader.SetUniform("environmentMap", 0);
+            prefilterShader.SetUniform("projection", captureProjection);
+            prefilterShader.SetUniform("resolution", (float)EnvSize);
+            _gl.ActiveTexture(TextureUnit.Texture0);
+            _gl.BindTexture(TextureTarget.TextureCubeMap, _envCubemap);
+
+            for (int mip = 0; mip < PrefilterMipLevels; mip++)
+            {
+                uint mipSize = Math.Max(1u, (uint)(PrefilterSize >> mip));
+
+                _gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, rbo);
+                _gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent24,
+                    mipSize, mipSize);
+                _gl.Viewport(0, 0, mipSize, mipSize);
+
+                float roughness = (float)mip / (PrefilterMipLevels - 1);
+                prefilterShader.SetUniform("roughness", roughness);
+
+                for (int face = 0; face < 6; face++)
+                {
+                    prefilterShader.SetUniform("view", CaptureViews[face]);
+                    _gl.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0,
+                        TextureTarget.TextureCubeMapPositiveX + face, _prefilterMap, mip);
+
+                    _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+                    cube.Draw();
+                }
+            }
         }
-        
-        SetCubemapParameters(mipmap: false);
-        return cubemap;
+        finally
+        {
+            _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+            if (fbo != 0) _gl.DeleteFramebuffer(fbo);
+            if (rbo != 0) _gl.DeleteRenderbuffer(rbo);
+            cube?.Dispose();
+            prefilterShader?.Dispose();
+            irradianceShader?.Dispose();
+
+            if (cullWasEnabled)
+                _gl.Enable(EnableCap.CullFace);
+        }
     }
 
     private uint CreateCubemapWithMipmaps(int size, Func<int, Vector3[]> generateFaceData)
     {
         uint cubemap = _gl.GenTexture();
         _gl.BindTexture(TextureTarget.TextureCubeMap, cubemap);
-        
+
         for (int face = 0; face < 6; face++)
         {
             Vector3[] colors = generateFaceData(face);
             UploadCubemapFace(face, size, colors);
         }
-        
+
         SetCubemapParameters(mipmap: true);
         _gl.GenerateMipmap(TextureTarget.TextureCubeMap);
+        return cubemap;
+    }
+
+    /// <summary>
+    /// Allocates an RGBA16F cubemap render target. When mipmap is true the full
+    /// mip chain is allocated (via GenerateMipmap) so individual mips can be
+    /// attached as framebuffer color targets.
+    /// </summary>
+    private unsafe uint CreateEmptyCubemap(int size, bool mipmap)
+    {
+        uint cubemap = _gl.GenTexture();
+        _gl.BindTexture(TextureTarget.TextureCubeMap, cubemap);
+
+        for (int face = 0; face < 6; face++)
+        {
+            _gl.TexImage2D(TextureTarget.TextureCubeMapPositiveX + face, 0, (int)InternalFormat.Rgba16f,
+                (uint)size, (uint)size, 0, PixelFormat.Rgba, PixelType.Float, null);
+        }
+
+        SetCubemapParameters(mipmap);
+        if (mipmap)
+            _gl.GenerateMipmap(TextureTarget.TextureCubeMap);
+
         return cubemap;
     }
 
@@ -82,7 +222,7 @@ public class ProceduralHDRI : IDisposable
     private void SetCubemapParameters(bool mipmap)
     {
         int minFilter = mipmap ? (int)GLEnum.LinearMipmapLinear : (int)GLEnum.Linear;
-        
+
         _gl.TexParameter(TextureTarget.TextureCubeMap, TextureParameterName.TextureMinFilter, minFilter);
         _gl.TexParameter(TextureTarget.TextureCubeMap, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
         _gl.TexParameter(TextureTarget.TextureCubeMap, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
@@ -98,26 +238,26 @@ public class ProceduralHDRI : IDisposable
         var skyHorizon = new Vector3(0.7f, 0.7f, 0.72f);
         var skyBottom = new Vector3(0.15f, 0.15f, 0.18f);
         var sunDir = Vector3.Normalize(new Vector3(-0.3f, -0.7f, -0.4f));
-        
+
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
             {
                 float u = (x + 0.5f) / size;
                 float v = (y + 0.5f) / size;
-                
+
                 Vector3 dir = GetCubemapDirection(face, u, v);
                 float t = (dir.Y + 1.0f) * 0.5f;
-                
+
                 Vector3 color = t > 0.5f
                     ? Vector3.Lerp(skyHorizon, skyTop, (t - 0.5f) * 2.0f)
                     : Vector3.Lerp(skyBottom, skyHorizon, t * 2.0f);
-                
+
                 color = AddSunGlow(color, dir, sunDir, 1.0f);
                 colors[y * size + x] = color;
             }
         }
-        
+
         return colors;
     }
 
@@ -130,44 +270,17 @@ public class ProceduralHDRI : IDisposable
         float sunDot = Math.Max(0, Vector3.Dot(dir, -sunDir));
         float sunGlow = MathF.Pow(sunDot, 64.0f) * 3.0f * intensity;
         float sunHalo = MathF.Pow(sunDot, 8.0f) * 0.8f * intensity;
-        
+
         color += new Vector3(1.0f, 0.95f, 0.85f) * sunGlow;
         color += new Vector3(1.0f, 0.98f, 0.92f) * sunHalo;
         return color;
-    }
-
-    private Vector3[] GenerateIrradiance(int face)
-    {
-        var colors = new Vector3[IrradianceSize * IrradianceSize];
-        
-        var skyColor = new Vector3(0.5f, 0.52f, 0.55f);
-        var groundColor = new Vector3(0.15f, 0.14f, 0.13f);
-        var horizonColor = new Vector3(0.4f, 0.4f, 0.42f);
-        
-        for (int y = 0; y < IrradianceSize; y++)
-        {
-            for (int x = 0; x < IrradianceSize; x++)
-            {
-                float u = (x + 0.5f) / IrradianceSize;
-                float v = (y + 0.5f) / IrradianceSize;
-                
-                Vector3 dir = GetCubemapDirection(face, u, v);
-                float t = dir.Y;
-                
-                colors[y * IrradianceSize + x] = t > 0
-                    ? Vector3.Lerp(horizonColor, skyColor, t)
-                    : Vector3.Lerp(horizonColor, groundColor, -t);
-            }
-        }
-        
-        return colors;
     }
 
     private static Vector3 GetCubemapDirection(int face, float u, float v)
     {
         float s = u * 2.0f - 1.0f;
         float t = v * 2.0f - 1.0f;
-        
+
         Vector3 dir = face switch
         {
             0 => new Vector3(1, -t, -s),
@@ -178,7 +291,7 @@ public class ProceduralHDRI : IDisposable
             5 => new Vector3(-s, -t, -1),
             _ => new Vector3(1, 0, 0)
         };
-        
+
         return Vector3.Normalize(dir);
     }
 
