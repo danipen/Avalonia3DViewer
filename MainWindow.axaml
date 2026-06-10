@@ -92,6 +92,13 @@
                            HorizontalAlignment="Stretch"
                            IsEnabled="False"
                            Margin="0,4,0,0"/>
+                    <TextBlock x:Name="EnvironmentNameText"
+                              Text="None"
+                              Foreground="#AAAAAA"
+                              FontStyle="Italic"
+                              TextTrimming="CharacterEllipsis"
+                              ToolTip.Tip="None"
+                              Margin="0,4,0,0"/>
 
                     <Separator/>
 

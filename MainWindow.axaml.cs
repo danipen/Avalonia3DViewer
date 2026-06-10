@@ -46,6 +46,7 @@ public partial class MainWindow : Window
     private TextBlock? _infoText;
     private Button? _runGcButton;
     private Button? _removeEnvironmentButton;
+    private TextBlock? _environmentNameText;
     
     private ComboBox? _modelComboBox;
     private readonly ModelLibrary _modelLibrary = new();
@@ -238,6 +239,7 @@ public partial class MainWindow : Window
         var loadModelButton = this.FindControl<Button>("LoadModelButton");
         var loadEnvironmentButton = this.FindControl<Button>("LoadEnvironmentButton");
         _removeEnvironmentButton = this.FindControl<Button>("RemoveEnvironmentButton");
+        _environmentNameText = this.FindControl<TextBlock>("EnvironmentNameText");
         var addModelButton = this.FindControl<Button>("AddModelButton");
         var removeModelButton = this.FindControl<Button>("RemoveModelButton");
 
@@ -669,10 +671,16 @@ public partial class MainWindow : Window
         try
         {
             _viewport.LoadEnvironment(path);
+            var fileName = System.IO.Path.GetFileName(path);
             if (_removeEnvironmentButton != null)
                 _removeEnvironmentButton.IsEnabled = true;
+            if (_environmentNameText != null)
+            {
+                _environmentNameText.Text = fileName;
+                ToolTip.SetTip(_environmentNameText, path);
+            }
             if (_infoText != null)
-                _infoText.Text = $"Environment: {System.IO.Path.GetFileName(path)}";
+                _infoText.Text = $"Environment: {fileName}";
         }
         catch (Exception ex)
         {
@@ -691,6 +699,11 @@ public partial class MainWindow : Window
             _viewport.ClearEnvironment();
             if (_removeEnvironmentButton != null)
                 _removeEnvironmentButton.IsEnabled = false;
+            if (_environmentNameText != null)
+            {
+                _environmentNameText.Text = "None";
+                ToolTip.SetTip(_environmentNameText, "None");
+            }
             if (_infoText != null)
                 _infoText.Text = "Environment: none (procedural sky)";
         }
